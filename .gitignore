@@ -1,0 +1,27 @@
+# Disk images
+*.raw
+*.img
+*.qcow2
+*.qcow
+*.vmdk
+*.vhd
+*.vhdx
+*.vdi
+*.ova
+*.iso
+*.fd
+
+# Extracted filesystems and archives
+lab/**/rootfs*/
+lab/**/bundle/
+lab/**/*-oci/
+*.tar
+*.tar.gz
+
+# Scratch
+.venv/
+__pycache__/
+*.log
+
+# Personal
+/docs/learning
