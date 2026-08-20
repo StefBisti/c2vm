@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "./src/build.h"
+
 
 #define C2VM_VERSION "0.0.1-dev"
 #define EXIT_RUNTIME_FAILURE_ERROR 1
@@ -9,7 +11,6 @@
 
 typedef int (*handler_fn)(int argc, char *argv[]);
 
-static int cmd_build(int argc, char *argv[]);
 static int cmd_scan(int argc, char *argv[]);
 static int cmd_diff(int argc, char *argv[]);
 static int cmd_push(int argc, char *argv[]);
@@ -74,7 +75,6 @@ static int not_implemented(const char *name)
     return EXIT_NOT_IMPLEMENTED_ERROR;
 }
 
-static int cmd_build(int argc, char *argv[])  { (void)argc; (void)argv; return not_implemented("build"); }
 static int cmd_scan(int argc, char *argv[])   { (void)argc; (void)argv; return not_implemented("scan"); }
 static int cmd_diff(int argc, char *argv[])   { (void)argc; (void)argv; return not_implemented("diff"); }
 static int cmd_push(int argc, char *argv[])   { (void)argc; (void)argv; return not_implemented("push"); }

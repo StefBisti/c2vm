@@ -1,14 +1,20 @@
 CC ?= cc
 CFLAGS ?= -std=c11 -Wall -Wextra -O2
+CPPFLAGS ?= -D_POSIX_C_SOURCE=200809L -Isrc
 IMAGE ?= ubuntu:24.04
 ARTIFACT ?= build/disk.qcow2
+
+SRCS := c2vm.c src/run.c src/cleanup.c src/build.c
+OBJS := $(SRCS:.c=.o)
 
 .PHONY: all clean demo loop-check
 
 all: c2vm
 
-c2vm: c2vm.c
-	$(CC) $(CFLAGS) -o $@ $<
+c2vm: $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS)
+
+$(OBJS): src/run.h src/cleanup.h src/build.h
 
 demo: c2vm
 	./c2vm build $(IMAGE) --format qcow2
@@ -20,7 +26,7 @@ clean:
 	rm -f lab/*.raw lab/*.qcow2 lab/*.vmdk lab/*.ova
 	-@$(MAKE) --no-print-directory loop-check
 
-# Reports only. Detaching is a decision you make, not a side effect.
+# report only
 loop-check:
 	@losetup --list --noheadings --output NAME,BACK-FILE \
 	  | awk -v d="$(CURDIR)/" \

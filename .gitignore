@@ -23,6 +23,7 @@ metadata/*.json
 .venv/
 __pycache__/
 *.log
+*.o
  
 # Keep the directories themselves
 !.gitkeep
