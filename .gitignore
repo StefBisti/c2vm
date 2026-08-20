@@ -15,6 +15,7 @@
 lab/**/rootfs*/
 lab/**/bundle/
 lab/**/*-oci/
+lab
 *.tar
 *.tar.gz
 
