@@ -9,12 +9,6 @@ conversion normally destroys** — a signed, SBOM-backed attestation binds the
 output disk back to the source image digest and to every decision c2vm made
 along the way, verifiable with a single `c2vm verify`.
 
-## Status
-
-Early development. See [c2vm-work-plan.md](c2vm-work-plan.md) for the full
-build plan and [docs/cli.md](docs/cli.md) for the command reference. Most
-subcommands are stubs right now — check the plan's phase checklists for
-what's actually implemented.
 
 ## Quickstart
 
