@@ -76,6 +76,55 @@ static const char *P(const char *fmt, ...)
     return buf;
 }
 
+/*
+ * JSON-escape into the same kind of rotating pool as P(). build.json becomes
+ * the signed attestation predicate in Phase 3, so a quote or a backslash in
+ * an image reference or a package list must not be able to break its syntax.
+ * The pool is larger than P()'s because one write_file() call escapes a dozen
+ * fields at once.
+ */
+static const char *J(const char *s)
+{
+    static char pool[16][PATH_MAX];
+    static size_t next;
+
+    char *buf = pool[next];
+    next = (next + 1) % NELEMS(pool);
+
+    size_t w = 0;
+    for (const unsigned char *p = (const unsigned char *)(s ? s : ""); *p; p++)
+    {
+        char esc[8];
+        const char *rep = esc;
+
+        switch (*p)
+        {
+        case '"':  rep = "\\\""; break;
+        case '\\': rep = "\\\\"; break;
+        case '\n': rep = "\\n";  break;
+        case '\r': rep = "\\r";  break;
+        case '\t': rep = "\\t";  break;
+        default:
+            if (*p < 0x20)
+                snprintf(esc, sizeof esc, "\\u%04x", *p);
+            else
+            {
+                esc[0] = (char)*p;
+                esc[1] = '\0';
+            }
+        }
+
+        size_t n = strlen(rep);
+        if (w + n >= PATH_MAX)
+            break; /* truncate rather than overflow */
+        memcpy(buf + w, rep, n);
+        w += n;
+    }
+    buf[w] = '\0';
+
+    return buf;
+}
+
 // ex: has_format(o, "qcow2") -> true (o->format = "qcow2,ova")
 static bool has_format(const struct build_opts *o, const char *want)
 {
@@ -339,8 +388,12 @@ static void apt_install(const struct build_opts *o)
     char *extra = o->packages ? strdup(o->packages) : NULL;
     if (extra)
         for (char *t = strtok(extra, ","); t != NULL; t = strtok(NULL, ","))
-            if (n < NELEMS(argv) - 1)
-                argv[n++] = t;
+        {
+            /* Never install a silently shortened package list. */
+            if (n >= NELEMS(argv) - 1)
+                die("too many packages (limit is %zu)", NELEMS(argv) - 1);
+            argv[n++] = t;
+        }
 
     argv[n] = NULL;
     run_argv_ok(argv);
@@ -412,12 +465,44 @@ static void install_system(const struct build_opts *o)
     run_ok("rm", "-f", P("%s/etc/resolv.conf", o->mnt), NULL);
 }
 
+/*
+ * The digest extract-rootfs.sh recorded at extraction time. Asking the
+ * registry again here would race a tag that moved in between, and build.json
+ * has to name the image that was actually unpacked into this disk — that
+ * binding is the whole chain of custody.
+ */
+static char *read_source_digest(const struct build_opts *o)
+{
+    if (dry_run)
+        return strdup("DRYRUN");
+
+    const char *path = P("%s/metadata/source.json", o->outdir);
+
+    FILE *f = fopen(path, "r");
+    if (!f)
+        die("cannot read %s: %s", path, strerror(errno));
+
+    char json[8192];
+    size_t n = fread(json, 1, sizeof json - 1, f);
+    fclose(f);
+    json[n] = '\0';
+
+    /* Small enough not to justify a JSON parser: one known key, one string. */
+    char *key = strstr(json, "\"source_digest\"");
+    char *val = key ? strchr(key + strlen("\"source_digest\""), '"') : NULL;
+    char *end = val ? strchr(val + 1, '"') : NULL;
+    if (!end)
+        die("%s does not contain a source_digest", path);
+
+    *end = '\0';
+    return strdup(val + 1);
+}
+
 static void write_metadata(const struct build_opts *o)
 {
     step("recording build metadata");
 
-    char *digest = run_capture("skopeo", "inspect", "--format", "{{.Digest}}",
-                               P("docker://%s", o->image), NULL);
+    char *digest = read_source_digest(o);
     char *kver = run_capture("chroot", o->mnt, "dpkg-query", "-W",
                              "-f=${Version}", o->kernel, NULL);
     char *gver = run_capture("chroot", o->mnt, "dpkg-query", "-W",
@@ -459,12 +544,12 @@ static void write_metadata(const struct build_opts *o)
                "  \"packages_before\": \"metadata/packages-before.txt\",\n"
                "  \"packages_after\": \"metadata/packages-after.txt\"\n"
                "}\n",
-               C2VM_VERSION, stamp, host,
-               o->image, digest,
-               o->size, o->fstype, o->format,
-               o->kernel, kver,
-               gver,
-               o->hostname, o->packages ? o->packages : "",
+               J(C2VM_VERSION), J(stamp), J(host),
+               J(o->image), J(digest),
+               J(o->size), J(o->fstype), J(o->format),
+               J(o->kernel), J(kver),
+               J(gver),
+               J(o->hostname), J(o->packages ? o->packages : ""),
                o->ssh_key ? "true" : "false");
 
     free(digest);

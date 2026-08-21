@@ -1,6 +1,5 @@
 # c2vm
 
-[![CI](https://img.shields.io/badge/CI-not_yet_wired-lightgrey)](.)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 **c2vm converts an OCI container image into a bootable VM disk (QCOW2, OVA)
