@@ -17,12 +17,15 @@ static void collect(const char *prog, va_list ap, char *argv[])
 {
     size_t n = 0;
     argv[n++] = (char *)prog;
-    while(1) {
+    while (1)
+    {
         const char *a = va_arg(ap, const char *);
-        if (!a) {
+        if (!a)
+        {
             break;
         }
-        if (n + 1 >= MAX_ARGS) {
+        if (n + 1 >= MAX_ARGS)
+        {
             die("too many arguments");
         }
         argv[n++] = (char *)a;
@@ -48,13 +51,14 @@ static int spawn(char *const argv[], char **out)
 {
     echo(argv);
 
-    if (dry_run) {
+    if (dry_run)
+    {
         if (out)
             *out = strdup("DRYRUN");
         return 0;
     }
 
-    int fds[2] = { -1, -1 };
+    int fds[2] = {-1, -1};
     if (out && pipe(fds) != 0)
         die("pipe: %s", strerror(errno));
 
@@ -62,8 +66,10 @@ static int spawn(char *const argv[], char **out)
     if (pid < 0)
         die("fork: %s", strerror(errno));
 
-    if (pid == 0) {
-        if (out) {
+    if (pid == 0)
+    {
+        if (out)
+        {
             dup2(fds[1], STDOUT_FILENO);
             close(fds[0]);
             close(fds[1]);
@@ -73,14 +79,17 @@ static int spawn(char *const argv[], char **out)
         _exit(127);
     }
 
-    if (out) {
+    if (out)
+    {
         close(fds[1]);
         size_t cap = 4096, len = 0;
         char *buf = malloc(cap);
         if (!buf)
             die("out of memory");
-        for (;;) {
-            if (len + 1 >= cap) {
+        for (;;)
+        {
+            if (len + 1 >= cap)
+            {
                 cap *= 2;
                 char *grown = realloc(buf, cap);
                 if (!grown)
@@ -94,7 +103,7 @@ static int spawn(char *const argv[], char **out)
         }
         close(fds[0]);
         while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == ' '))
-            len--;            /* blkid and skopeo both add a trailing newline */
+            len--; /* blkid and skopeo both add a trailing newline */
         buf[len] = '\0';
         *out = buf;
     }
@@ -147,6 +156,18 @@ char *run_capture(const char *prog, ...)
     return out;
 }
 
+int run_argv(char *const argv[])
+{
+    return spawn(argv, NULL);
+}
+
+void run_argv_ok(char *const argv[])
+{
+    int rc = spawn(argv, NULL);
+    if (rc != 0)
+        die("%s failed (exit %d)", argv[0], rc);
+}
+
 // write a file from a format string
 void write_file(const char *path, const char *fmt, ...)
 {
@@ -187,5 +208,5 @@ void die(const char *fmt, ...)
     vfprintf(stderr, fmt, ap);
     va_end(ap);
     fputc('\n', stderr);
-    exit(EXIT_FAILURE);      /* atexit handler unwinds mounts and loop devices */
+    exit(EXIT_FAILURE); /* atexit handler unwinds mounts and loop devices */
 }

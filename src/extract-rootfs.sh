@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Turns a container image reference into a plain directory of files
+
 set -euo pipefail
 
 IMAGE="${1:?usage: extract-rootfs.sh <image-ref> <output-dir>}"

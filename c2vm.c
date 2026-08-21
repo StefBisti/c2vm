@@ -4,7 +4,6 @@
 #include "./src/build.h"
 
 
-#define C2VM_VERSION "0.0.1-dev"
 #define EXIT_RUNTIME_FAILURE_ERROR 1
 #define EXIT_USAGE_ERROR 2
 #define EXIT_NOT_IMPLEMENTED_ERROR 64

@@ -1,6 +1,6 @@
 CC ?= cc
 CFLAGS ?= -std=c11 -Wall -Wextra -O2
-CPPFLAGS ?= -D_POSIX_C_SOURCE=200809L -Isrc
+CPPFLAGS ?= -D_GNU_SOURCE -Isrc
 IMAGE ?= ubuntu:24.04
 ARTIFACT ?= build/disk.qcow2
 
