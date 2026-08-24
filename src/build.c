@@ -175,6 +175,19 @@ static void build_usage(void)
         stderr);
 }
 
+static bool readable(const char *flag, const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f)
+    {
+        fprintf(stderr, "c2vm build: %s: cannot read %s: %s\n",
+                flag, path, strerror(errno));
+        return false;
+    }
+    fclose(f);
+    return true;
+}
+
 /* Returns 0 on success, EXIT_USAGE on a bad argument list. */
 static int parse_opts(int argc, char *argv[], struct build_opts *o)
 {
@@ -264,6 +277,12 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
         fprintf(stderr, "c2vm build: --format must include qcow2 or raw\n");
         return EXIT_USAGE;
     }
+
+    if (o->ssh_key && !readable("--ssh-key", o->ssh_key))
+        return EXIT_USAGE;
+    if (o->pw_file && !readable("--root-password", o->pw_file))
+        return EXIT_USAGE;
+
     return 0;
 }
 
@@ -619,6 +638,9 @@ static void configure_cloud_init(const struct build_opts *o)
     if (o->pw_file)
     {
         char *plain = read_small_file(o->pw_file);
+        if (plain[0] == '\0')
+            die("--root-password: %s is empty", o->pw_file);
+
         pwhash = hash_password(plain);
         memset(plain, 0, strlen(plain));
         free(plain);
@@ -665,6 +687,9 @@ static void configure_cloud_init(const struct build_opts *o)
                o->hostname, o->user, keyblock,
                pwhash ? "false" : "true", pwblock);
 
+    run_ok("chmod", "0600", P("%s/user-data", seed), NULL);
+    run_ok("chmod", "0700", seed, NULL);
+
     if (pwhash)
     {
         memset(pwhash, 0, strlen(pwhash));
@@ -681,7 +706,7 @@ static void configure_cloud_init(const struct build_opts *o)
 
     /* Same argument for host keys: baked-in keys would be shared by every VM
        built from this image. cloud-init writes fresh ones on first boot. */
-    run("find", P("%s/etc/ssh", o->mnt), "-name", "ssh_host_*", "-delete", NULL);
+    run_ok("find", P("%s/etc/ssh", o->mnt), "-name", "ssh_host_*", "-delete", NULL);
 
     /* The package preset normally enables these. Be explicit: a disk that
        silently ships a disabled cloud-init boots with no user and no network. */

@@ -5,11 +5,11 @@ c2vm <command> [options]
 ```
 
 - `c2vm build <image-ref> --format qcow2,ova [--size] [--ssh-key] [--user] [--packages] [--root-password <file>]`
-- `c2vm scan <artifact>` — SBOM + CVE scan of a built disk (Stage 3.1)
-- `c2vm diff <sbom-a> <sbom-b>` — package delta between two SBOMs (Stage 3.2)
-- `c2vm push <artifact> <oci-ref>` — publish as an OCI artifact (Stage 3.4)
-- `c2vm sign <oci-ref>` / `c2vm attest <oci-ref>` — keyless signing and attestations (Stage 3.4)
-- `c2vm verify <oci-ref> [--policy policy/default.yaml]` — the headline command (Stage 3.5)
+- `c2vm scan <artifact>` — SBOM + CVE scan of a built disk
+- `c2vm diff <sbom-a> <sbom-b>` — package delta between two SBOMs
+- `c2vm push <artifact> <oci-ref>` — publish as an OCI artifact
+- `c2vm sign <oci-ref>` / `c2vm attest <oci-ref>` — keyless signing and attestations
+- `c2vm verify <oci-ref> [--policy policy/default.yaml]` — the headline command 
 
 ### Global flags
 
