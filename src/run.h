@@ -19,4 +19,6 @@ void die(const char *fmt, ...);  /* error + cleanup + exit(1) */
 int run_argv(char *const argv[]);
 void run_argv_ok(char *const argv[]);
 
+const char *P(const char *fmt, ...);
+
 #endif

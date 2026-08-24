@@ -1,5 +1,6 @@
 #include "build.h"
 #include "cleanup.h"
+#include "ova.h"
 #include "run.h"
 
 #include <errno.h>
@@ -57,29 +58,7 @@ struct build_opts
     char mnt[PATH_MAX];
 };
 
-/*
- * Build a path string. Returns a pointer into a small rotating pool so that
- * several calls can appear in one expression. Valid only until eight further
- * calls have been made - no buffer to manage
- * ex: P("%s/disk.raw", o->outdir) -> "build/disk.raw"
- */
-
-// useful because it requires no buffer for formatting
-static const char *P(const char *fmt, ...)
-{
-    static char pool[8][PATH_MAX];
-    static size_t next;
-
-    char *buf = pool[next];
-    next = (next + 1) % NELEMS(pool);
-
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, PATH_MAX, fmt, ap);
-    va_end(ap);
-
-    return buf;
-}
+/* P() lives in run.c: src/ova.c needs it too. */
 
 /*
  * JSON-escape into the same kind of rotating pool as P(). build.json becomes
@@ -281,9 +260,9 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
         return EXIT_USAGE;
     }
 
-    if (!has_format(o, "qcow2") && !has_format(o, "raw"))
+    if (!has_format(o, "qcow2") && !has_format(o, "raw") && !has_format(o, "ova"))
     {
-        fprintf(stderr, "c2vm build: --format must include qcow2 or raw\n");
+        fprintf(stderr, "c2vm build: --format must include qcow2, raw or ova\n");
         return EXIT_USAGE;
     }
 
@@ -757,7 +736,7 @@ static void write_metadata(const struct build_opts *o)
                "  \"disk\": {\n"
                "    \"size\": \"%s\",\n"
                "    \"fstype\": \"%s\",\n"
-               "    \"formats\": \"%s\"\n"
+               "    \"formats\": \"%s\",\n"
                "    \"compressed\": %s\n"
                "  },\n"
                "  \"kernel\": {\n"
@@ -796,13 +775,16 @@ static void write_metadata(const struct build_opts *o)
 
 static void convert_formats(const struct build_opts *o)
 {
-    if (!has_format(o, "qcow2"))
-        return;
+    if (has_format(o, "qcow2"))
+    {
+        step("converting to qcow2%s", o->compress ? " (compressed)" : "");
+        run_ok("qemu-img", "convert", "-f", "raw", "-O", "qcow2",
+               o->compress ? "-c" : "-p",
+               P("%s/disk.raw", o->outdir), P("%s/disk.qcow2", o->outdir), NULL);
+    }
 
-    step("converting to qcow2%s", o->compress ? " (compressed)" : "");
-    run_ok("qemu-img", "convert", "-f", "raw", "-O", "qcow2",
-           o->compress ? "-c" : "-p",
-           P("%s/disk.raw", o->outdir), P("%s/disk.qcow2", o->outdir), NULL);
+    if (has_format(o, "ova"))
+        ova_write(o->outdir, o->hostname);
 }
 
 /* ----------------------------------------------------------------- entry */
@@ -862,6 +844,8 @@ int cmd_build(int argc, char *argv[])
     fprintf(stderr, "  %s/disk.raw\n", o.outdir);
     if (has_format(&o, "qcow2"))
         fprintf(stderr, "  %s/disk.qcow2\n", o.outdir);
+    if (has_format(&o, "ova"))
+        fprintf(stderr, "  %s/disk.ova\n", o.outdir);
     fprintf(stderr, "  %s/metadata/build.json\n", o.outdir);
 
     return EXIT_SUCCESS;
