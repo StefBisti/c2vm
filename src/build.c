@@ -543,7 +543,6 @@ static char *read_source_digest(const struct build_opts *o)
     return digest;
 }
 
-
 static void configure_cloud_init(const struct build_opts *o)
 {
     step("seeding cloud-init");
@@ -579,10 +578,36 @@ static void configure_cloud_init(const struct build_opts *o)
     char keyblock[8192] = "";
     if (o->ssh_key)
     {
-        char *key = read_small_file(o->ssh_key);
-        snprintf(keyblock, sizeof keyblock,
-                 "    ssh_authorized_keys:\n      - %s\n", key);
-        free(key);
+        char *keys = read_small_file(o->ssh_key);
+        size_t w = 0;
+
+        for (char *l = strtok(keys, "\r\n"); l; l = strtok(NULL, "\r\n"))
+        {
+            while (*l == ' ' || *l == '\t')
+                l++;
+            if (*l == '\0' || *l == '#')
+                continue;
+
+            /* Quoted, because a key comment may contain '#'. Which means the
+               two characters that would end the quote have to go. */
+            if (strchr(l, '"') || strchr(l, '\\'))
+                die("--ssh-key: %s contains a quote or backslash", o->ssh_key);
+
+            if (w == 0)
+                w = (size_t)snprintf(keyblock, sizeof keyblock,
+                                     "    ssh_authorized_keys:\n");
+
+            int n = snprintf(keyblock + w, sizeof keyblock - w,
+                             "      - \"%s\"\n", l);
+            if (n < 0 || (size_t)n >= sizeof keyblock - w)
+                die("--ssh-key: %s has too many keys", o->ssh_key);
+            w += (size_t)n;
+        }
+
+        if (w == 0)
+            die("--ssh-key: %s contains no keys", o->ssh_key);
+
+        free(keys);
     }
 
     /*
