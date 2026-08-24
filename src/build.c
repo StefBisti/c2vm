@@ -53,6 +53,7 @@ struct build_opts
     const char *outdir;
     const char *user;
     const char *pw_file;
+    bool compress;
     char mnt[PATH_MAX];
 };
 
@@ -171,6 +172,7 @@ static void build_usage(void)
         "  --out <dir>            output directory (default: build)\n"
         "  --user <name>          default user account (default: c2vm)\n"
         "  --root-password <file> file holding a root password, hashed\n"
+        "  --compress             compress the qcow2 (changes its hash)\n"
         "  --dry-run              print every command instead of running it\n",
         stderr);
 }
@@ -202,6 +204,7 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
     o->outdir = "build";
     o->user = "c2vm";
     o->pw_file = NULL;
+    o->compress = false;
 
     for (int i = 0; i < argc; i++)
     {
@@ -212,6 +215,12 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
             dry_run = true;
             continue;
         }
+        if (!strcmp(a, "--compress"))
+        {
+            o->compress = true;
+            continue;
+        }
+
         if (!strcmp(a, "-h") || !strcmp(a, "--help"))
         {
             build_usage();
@@ -749,6 +758,7 @@ static void write_metadata(const struct build_opts *o)
                "    \"size\": \"%s\",\n"
                "    \"fstype\": \"%s\",\n"
                "    \"formats\": \"%s\"\n"
+               "    \"compressed\": %s\n"
                "  },\n"
                "  \"kernel\": {\n"
                "    \"package\": \"%s\",\n"
@@ -771,6 +781,7 @@ static void write_metadata(const struct build_opts *o)
                J(C2VM_VERSION), J(stamp), J(host),
                J(o->image), J(digest),
                J(o->size), J(o->fstype), J(o->format),
+               o->compress ? "true" : "false",
                J(o->kernel), J(kver),
                J(gver),
                J(o->hostname), J(o->user), J(o->packages ? o->packages : ""),
@@ -788,8 +799,9 @@ static void convert_formats(const struct build_opts *o)
     if (!has_format(o, "qcow2"))
         return;
 
-    step("converting to qcow2");
-    run_ok("qemu-img", "convert", "-f", "raw", "-O", "qcow2", "-c",
+    step("converting to qcow2%s", o->compress ? " (compressed)" : "");
+    run_ok("qemu-img", "convert", "-f", "raw", "-O", "qcow2",
+           o->compress ? "-c" : "-p",
            P("%s/disk.raw", o->outdir), P("%s/disk.qcow2", o->outdir), NULL);
 }
 
