@@ -6,13 +6,14 @@ ARTIFACT ?= build/disk.qcow2
 
 SRCS := c2vm.c src/run.c src/cleanup.c src/build.c
 OBJS := $(SRCS:.c=.o)
+LDLIBS ?= -lcrypt
 
 .PHONY: all clean demo loop-check
 
 all: c2vm
 
 c2vm: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDLIBS)
 
 $(OBJS): src/run.h src/cleanup.h src/build.h
 

@@ -11,6 +11,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <crypt.h>
 
 #define EXIT_USAGE 2
 #define NELEMS(a) (sizeof(a) / sizeof(a)[0])
@@ -29,6 +30,7 @@ static const char *BASE_PACKAGES[] = {
     "ca-certificates",
     "openssh-server",
     "sudo",
+    "cloud-init",
 };
 
 /* Phase 0: without these in the initramfs the guest cannot find its root disk. */
@@ -49,6 +51,8 @@ struct build_opts
     const char *fstype;
     const char *ssh_key;
     const char *outdir;
+    const char *user;
+    const char *pw_file;
     char mnt[PATH_MAX];
 };
 
@@ -99,11 +103,21 @@ static const char *J(const char *s)
 
         switch (*p)
         {
-        case '"':  rep = "\\\""; break;
-        case '\\': rep = "\\\\"; break;
-        case '\n': rep = "\\n";  break;
-        case '\r': rep = "\\r";  break;
-        case '\t': rep = "\\t";  break;
+        case '"':
+            rep = "\\\"";
+            break;
+        case '\\':
+            rep = "\\\\";
+            break;
+        case '\n':
+            rep = "\\n";
+            break;
+        case '\r':
+            rep = "\\r";
+            break;
+        case '\t':
+            rep = "\\t";
+            break;
         default:
             if (*p < 0x20)
                 snprintf(esc, sizeof esc, "\\u%04x", *p);
@@ -147,15 +161,17 @@ static void build_usage(void)
     fputs(
         "usage: c2vm build <image-ref> [options]\n"
         "\n"
-        "  --format <list>     output formats, comma-separated (default: qcow2)\n"
-        "  --size <size>       disk size (default: 10G)\n"
-        "  --hostname <name>   guest hostname (default: c2vm)\n"
-        "  --packages <list>   extra packages, comma-separated\n"
-        "  --kernel <pkg>      kernel package (default: linux-image-virtual)\n"
-        "  --fstype <fs>       root filesystem (default: ext4)\n"
-        "  --ssh-key <path>    authorized key for root\n"
-        "  --out <dir>         output directory (default: build)\n"
-        "  --dry-run           print every command instead of running it\n",
+        "  --format <list>        output formats, comma-separated (default: qcow2)\n"
+        "  --size <size>          disk size (default: 10G)\n"
+        "  --hostname <name>      guest hostname (default: c2vm)\n"
+        "  --packages <list>      extra packages, comma-separated\n"
+        "  --kernel <pkg>         kernel package (default: linux-image-virtual)\n"
+        "  --fstype <fs>          root filesystem (default: ext4)\n"
+        "  --ssh-key <path>       authorized key for root\n"
+        "  --out <dir>            output directory (default: build)\n"
+        "  --user <name>          default user account (default: c2vm)\n"
+        "  --root-password <file> file holding a root password, hashed\n"
+        "  --dry-run              print every command instead of running it\n",
         stderr);
 }
 
@@ -171,6 +187,8 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
     o->fstype = "ext4";
     o->ssh_key = NULL;
     o->outdir = "build";
+    o->user = "c2vm";
+    o->pw_file = NULL;
 
     for (int i = 0; i < argc; i++)
     {
@@ -206,6 +224,11 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
                 whereToWriteTheValue = &o->ssh_key;
             else if (!strcmp(a, "--out"))
                 whereToWriteTheValue = &o->outdir;
+            else if (!strcmp(a, "--user"))
+                whereToWriteTheValue = &o->user;
+            else if (!strcmp(a, "--root-password"))
+                whereToWriteTheValue = &o->pw_file;
+
             else
             {
                 fprintf(stderr, "c2vm build: unknown option '%s'\n", a);
@@ -447,14 +470,6 @@ static void install_system(const struct build_opts *o)
 
     run_ok("chroot", o->mnt, "systemctl", "enable", "serial-getty@ttyS0.service", NULL);
 
-    if (o->ssh_key)
-    {
-        /* Stage 2.2 replaces this with cloud-init. No password is ever set. */
-        run_ok("mkdir", "-p", P("%s/root/.ssh", o->mnt), NULL);
-        run_ok("cp", o->ssh_key, P("%s/root/.ssh/authorized_keys", o->mnt), NULL);
-        run_ok("chmod", "0600", P("%s/root/.ssh/authorized_keys", o->mnt), NULL);
-    }
-
     char *after = run_capture("chroot", o->mnt, "dpkg-query", "-W",
                               "-f=${Package}\t${Version}\n", NULL);
     write_file(P("%s/metadata/packages-after.txt", o->outdir), "%s\n", after);
@@ -465,27 +480,55 @@ static void install_system(const struct build_opts *o)
     run_ok("rm", "-f", P("%s/etc/resolv.conf", o->mnt), NULL);
 }
 
-/*
- * The digest extract-rootfs.sh recorded at extraction time. Asking the
- * registry again here would race a tag that moved in between, and build.json
- * has to name the image that was actually unpacked into this disk — that
- * binding is the whole chain of custody.
- */
+static char *read_small_file(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f)
+        die("cannot read %s: %s", path, strerror(errno));
+
+    char buf[8192];
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+
+    while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r' || buf[n - 1] == ' '))
+        buf[--n] = '\0';
+
+    return strdup(buf);
+}
+
+static char *hash_password(const char *plain)
+{
+    static const char ALPHABET[] =
+        "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+    unsigned char raw[16];
+    FILE *f = fopen("/dev/urandom", "r");
+    if (!f || fread(raw, 1, sizeof raw, f) != sizeof raw)
+        die("cannot read /dev/urandom");
+    fclose(f);
+
+    /* 256 is a multiple of 64, so the modulo below is unbiased. */
+    char setting[3 + sizeof raw + 1];
+    memcpy(setting, "$6$", 3);
+    for (size_t i = 0; i < sizeof raw; i++)
+        setting[3 + i] = ALPHABET[raw[i] % (sizeof ALPHABET - 1)];
+    setting[3 + sizeof raw] = '\0';
+
+    char *hash = crypt(plain, setting);
+    if (!hash || hash[0] == '*') /* libxcrypt's failure signal */
+        die("password hashing failed");
+
+    return strdup(hash);
+}
+
 static char *read_source_digest(const struct build_opts *o)
 {
     if (dry_run)
         return strdup("DRYRUN");
 
     const char *path = P("%s/metadata/source.json", o->outdir);
-
-    FILE *f = fopen(path, "r");
-    if (!f)
-        die("cannot read %s: %s", path, strerror(errno));
-
-    char json[8192];
-    size_t n = fread(json, 1, sizeof json - 1, f);
-    fclose(f);
-    json[n] = '\0';
+    char *json = read_small_file(path);
 
     /* Small enough not to justify a JSON parser: one known key, one string. */
     char *key = strstr(json, "\"source_digest\"");
@@ -495,7 +538,136 @@ static char *read_source_digest(const struct build_opts *o)
         die("%s does not contain a source_digest", path);
 
     *end = '\0';
-    return strdup(val + 1);
+    char *digest = strdup(val + 1);
+    free(json);
+    return digest;
+}
+
+
+static void configure_cloud_init(const struct build_opts *o)
+{
+    step("seeding cloud-init");
+
+    char seed[PATH_MAX + 64];
+    snprintf(seed, sizeof seed, "%s/var/lib/cloud/seed/nocloud", o->mnt);
+    run_ok("mkdir", "-p", seed, NULL);
+
+    run_ok("mkdir", "-p", P("%s/etc/cloud/cloud.cfg.d", o->mnt), NULL);
+    write_file(P("%s/etc/cloud/cloud.cfg.d/99-c2vm.cfg", o->mnt),
+               "datasource_list: [ NoCloud, None ]\n");
+
+    char stamp[32];
+    time_t now = time(NULL);
+    strftime(stamp, sizeof stamp, "%Y%m%d%H%M%S", gmtime(&now));
+
+    write_file(P("%s/meta-data", seed),
+               "instance-id: iid-c2vm-%s\n"
+               "local-hostname: %s\n",
+               stamp, o->hostname);
+
+    /* Matched by prefix: the guest names its interface from PCI topology, so
+       the name is not known at build time. */
+    write_file(P("%s/network-config", seed),
+               "version: 2\n"
+               "ethernets:\n"
+               "  primary:\n"
+               "    match:\n"
+               "      name: \"en*\"\n"
+               "    dhcp4: true\n"
+               "    dhcp6: false\n");
+
+    char keyblock[8192] = "";
+    if (o->ssh_key)
+    {
+        char *key = read_small_file(o->ssh_key);
+        snprintf(keyblock, sizeof keyblock,
+                 "    ssh_authorized_keys:\n      - %s\n", key);
+        free(key);
+    }
+
+    /*
+     * The seed ships inside a distributable disk, so it must never hold a
+     * plaintext password.
+     */
+    char pwblock[512] = "";
+    char *pwhash = NULL;
+    if (o->pw_file)
+    {
+        char *plain = read_small_file(o->pw_file);
+        pwhash = hash_password(plain);
+        memset(plain, 0, strlen(plain));
+        free(plain);
+
+        snprintf(pwblock, sizeof pwblock,
+                 "chpasswd:\n"
+                 "  expire: true\n"
+                 "  users:\n"
+                 "    - name: root\n"
+                 "      type: hash\n"
+                 "      password: \"%s\"\n",
+                 pwhash);
+
+        fprintf(stderr,
+                "c2vm: warning: --root-password sets a root password on a\n"
+                "               distributable image. It is hashed and expired on\n"
+                "               first login, and SSH password authentication stays\n"
+                "               off, so it reaches only the serial console.\n");
+    }
+
+    if (!o->ssh_key && !o->pw_file)
+        fprintf(stderr,
+                "c2vm: warning: no --ssh-key and no --root-password: the guest\n"
+                "               will boot with no way to log in.\n");
+
+    write_file(P("%s/user-data", seed),
+               "#cloud-config\n"
+               "hostname: %s\n"
+               "\n"
+               "users:\n"
+               "  - name: %s\n"
+               "    groups: [adm, sudo]\n"
+               "    shell: /bin/bash\n"
+               "    sudo: \"ALL=(ALL) NOPASSWD:ALL\"\n"
+               "    lock_passwd: true\n"
+               "%s"
+               "\n"
+               "ssh_pwauth: false\n"
+               "disable_root: %s\n"
+               "%s"
+               "\n"
+               "ssh_deletekeys: true\n"
+               "ssh_genkeytypes: [ed25519, rsa]\n",
+               o->hostname, o->user, keyblock,
+               pwhash ? "false" : "true", pwblock);
+
+    if (pwhash)
+    {
+        memset(pwhash, 0, strlen(pwhash));
+        free(pwhash);
+    }
+
+    /*
+     * systemd regenerates the machine ID on first boot. Without this every
+     * clone of this disk answers to one identity, and a DHCP server hands
+     * them all the same lease.
+     */
+    run_ok("truncate", "-s", "0", P("%s/etc/machine-id", o->mnt), NULL);
+    run_ok("rm", "-f", P("%s/var/lib/dbus/machine-id", o->mnt), NULL);
+
+    /* Same argument for host keys: baked-in keys would be shared by every VM
+       built from this image. cloud-init writes fresh ones on first boot. */
+    run("find", P("%s/etc/ssh", o->mnt), "-name", "ssh_host_*", "-delete", NULL);
+
+    /* The package preset normally enables these. Be explicit: a disk that
+       silently ships a disabled cloud-init boots with no user and no network. */
+    static const char *CI_UNITS[] = {
+        "cloud-init-local.service",
+        "cloud-init.service",
+        "cloud-config.service",
+        "cloud-final.service",
+    };
+    for (size_t i = 0; i < NELEMS(CI_UNITS); i++)
+        run("chroot", o->mnt, "systemctl", "enable", CI_UNITS[i], NULL);
 }
 
 static void write_metadata(const struct build_opts *o)
@@ -538,8 +710,10 @@ static void write_metadata(const struct build_opts *o)
                "  },\n"
                "  \"flags\": {\n"
                "    \"hostname\": \"%s\",\n"
+               "    \"user\": \"%s\",\n"
                "    \"extra_packages\": \"%s\",\n"
-               "    \"ssh_key\": %s\n"
+               "    \"ssh_key\": %s,\n"
+               "    \"root_password\": %s\n"
                "  },\n"
                "  \"packages_before\": \"metadata/packages-before.txt\",\n"
                "  \"packages_after\": \"metadata/packages-after.txt\"\n"
@@ -549,8 +723,9 @@ static void write_metadata(const struct build_opts *o)
                J(o->size), J(o->fstype), J(o->format),
                J(o->kernel), J(kver),
                J(gver),
-               J(o->hostname), J(o->packages ? o->packages : ""),
-               o->ssh_key ? "true" : "false");
+               J(o->hostname), J(o->user), J(o->packages ? o->packages : ""),
+               o->ssh_key ? "true" : "false",
+               o->pw_file ? "true" : "false");
 
     free(digest);
     free(kver);
@@ -595,6 +770,7 @@ int cmd_build(int argc, char *argv[])
     fprintf(stderr, "  formats:  %s\n", o.format);
     fprintf(stderr, "  size:     %s\n", o.size);
     fprintf(stderr, "  hostname: %s\n", o.hostname);
+    fprintf(stderr, "  user:     %s\n", o.user);
     fprintf(stderr, "  kernel:   %s\n", o.kernel);
     fprintf(stderr, "  fstype:   %s\n", o.fstype);
     fprintf(stderr, "  packages: %s\n", o.packages ? o.packages : "(none)");
@@ -611,6 +787,7 @@ int cmd_build(int argc, char *argv[])
     mount_all(&o, loop);
     write_guest_config(&o, loop);
     install_system(&o);
+    configure_cloud_init(&o);
     write_metadata(&o);
 
     /* Unmount and detach before converting, so qcow2 sees a quiesced disk. */

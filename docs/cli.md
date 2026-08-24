@@ -4,7 +4,7 @@
 c2vm <command> [options]
 ```
 
-- `c2vm build <image-ref> --format qcow2,ova [--size] [--ssh-key] [--packages]` — build a bootable disk from a container image (Stage 2.1); `--ssh-key` replaces password login (Stage 2.2)
+- `c2vm build <image-ref> --format qcow2,ova [--size] [--ssh-key] [--user] [--packages] [--root-password <file>]`
 - `c2vm scan <artifact>` — SBOM + CVE scan of a built disk (Stage 3.1)
 - `c2vm diff <sbom-a> <sbom-b>` — package delta between two SBOMs (Stage 3.2)
 - `c2vm push <artifact> <oci-ref>` — publish as an OCI artifact (Stage 3.4)
