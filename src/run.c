@@ -162,6 +162,13 @@ int run_argv(char *const argv[])
     return spawn(argv, NULL);
 }
 
+/* Like run_capture, but for an argv built at runtime. Returns the exit
+   status instead of dying, so a caller can accept a non-zero one. */
+int run_argv_capture(char *const argv[], char **out)
+{
+    return spawn(argv, out);
+}
+
 void run_argv_ok(char *const argv[])
 {
     int rc = spawn(argv, NULL);

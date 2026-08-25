@@ -6,18 +6,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 enum action_kind
 {
     ACT_UMOUNT,
-    ACT_LOSETUP
+    ACT_LOSETUP,
+    ACT_KILL
 };
 
 struct action
 {
     enum action_kind kind;
     char path[4096];
+    pid_t pid;
 };
 
 #define MAX_ACTIONS 32
@@ -25,18 +29,34 @@ struct action
 static struct action actions[MAX_ACTIONS];
 static size_t action_count;
 
-static void push(enum action_kind kind, const char *path)
+static struct action *push(enum action_kind kind, const char *path)
 {
     if (action_count >= MAX_ACTIONS)
         die("cleanup stack overflow (more than %d actions)", MAX_ACTIONS);
 
     struct action *a = &actions[action_count++];
     a->kind = kind;
+    a->pid = -1;
     snprintf(a->path, sizeof a->path, "%s", path);
+    return a;
 }
 
 void cleanup_push_umount(const char *path) { push(ACT_UMOUNT, path); }
 void cleanup_push_losetup(const char *dev) { push(ACT_LOSETUP, dev); }
+
+/* A boot test that dies mid-run must not leave a VM holding the disk. */
+void cleanup_push_kill(pid_t pid, const char *what) { push(ACT_KILL, what)->pid = pid; }
+
+/*
+ * The caller reaped the child itself. Without this the pid stays on the
+ * stack and cleanup signals whatever the kernel has since reassigned it to.
+ */
+void cleanup_drop_kill(pid_t pid)
+{
+    for (size_t i = 0; i < action_count; i++)
+        if (actions[i].kind == ACT_KILL && actions[i].pid == pid)
+            actions[i].pid = -1;
+}
 
 /* Cheaper and quieter than shelling out to losetup just to query. */
 static bool loop_attached(const char *dev)
@@ -84,6 +104,29 @@ void cleanup_run(void)
                         "c2vm: warning: %s is still attached; "
                         "run: sudo losetup -d %s\n",
                         a->path, a->path);
+            break;
+        case ACT_KILL:
+            if (a->pid > 0 && kill(a->pid, SIGTERM) == 0)
+            {
+                fprintf(stderr, "  killing %s (pid %d)\n", a->path, (int)a->pid);
+
+                /* SIGKILL after a grace period: QEMU normally goes on TERM.
+                   Reaping in the loop, so an exit ends the wait at once. */
+                bool gone = false;
+                for (int i = 0; i < 20 && !gone; i++)
+                {
+                    if (waitpid(a->pid, NULL, WNOHANG) != 0)
+                        gone = true;
+                    else
+                        usleep(100000);
+                }
+
+                if (!gone)
+                {
+                    kill(a->pid, SIGKILL);
+                    waitpid(a->pid, NULL, 0);
+                }
+            }
             break;
         }
     }

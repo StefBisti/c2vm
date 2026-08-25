@@ -18,6 +18,7 @@ void die(const char *fmt, ...);  /* error + cleanup + exit(1) */
 /* Same, but for argument lists built at runtime (e.g. a package list). */
 int run_argv(char *const argv[]);
 void run_argv_ok(char *const argv[]);
+int run_argv_capture(char *const argv[], char **out);
 
 const char *P(const char *fmt, ...);
 

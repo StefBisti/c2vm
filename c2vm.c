@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "./src/boottest.h"
 #include "./src/build.h"
 
 #define EXIT_RUNTIME_FAILURE_ERROR 1
@@ -24,6 +25,7 @@ struct command
 
 static const struct command COMMANDS[] = {
     {"build", cmd_build},
+    {"boot-test", cmd_boot_test},
     {"scan", cmd_scan},
     {"diff", cmd_diff},
     {"push", cmd_push},
@@ -50,6 +52,11 @@ static void usage(FILE *out)
         "                          --user <name>          default user (default: c2vm)\n"
         "                          --root-password <file> opt-in root password (hashed)\n"
 
+        "\n"
+        "  boot-test <artifact>  Boot the artifact headless and assert the guest came up\n"
+        "                          --ssh-key <path>       private key to log in with\n"
+        "                          --user <name>          guest account (default: c2vm)\n"
+        "                          --timeout <sec>        hard limit (default: 180)\n"
         "\n"
         "  scan <artifact>       Generate an SBOM of a built disk and scan it for CVEs\n"
         "  diff <sbom-a> <sbom-b>\n"

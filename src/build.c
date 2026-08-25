@@ -56,6 +56,7 @@ struct build_opts
     const char *pw_file;
     bool compress;
     char mnt[PATH_MAX];
+    char root_uuid[64]; /* filled in by write_guest_config */
 };
 
 /* P() lives in run.c: src/ova.c needs it too. */
@@ -292,10 +293,41 @@ static void prepare_outdir(const struct build_opts *o)
 }
 
 // populates build/rootfs from the image
+/*
+ * The script resolves the tag, unpacks the layers and prints the digest it
+ * resolved — nothing else reaches its stdout. source.json is written here
+ * rather than there because it feeds the Phase 3 attestation predicate, and
+ * a shell heredoc interpolating an image reference into JSON has no escaping.
+ */
 static void extract_rootfs(const struct build_opts *o)
 {
     step("extracting %s", o->image);
-    run_ok("src/extract-rootfs.sh", o->image, P("%s/rootfs", o->outdir), NULL);
+
+    char *digest = run_capture("src/extract-rootfs.sh", o->image,
+                               P("%s/rootfs", o->outdir), NULL);
+    char *host = run_capture("uname", "-srm", NULL);
+
+    /* Cheap insurance for the one field Phase 3 binds the disk to: anything
+       a subcommand leaks onto the script's stdout would land here instead. */
+    if (!dry_run && strncmp(digest, "sha256:", 7) != 0)
+        die("extract-rootfs.sh did not return a digest: %.60s", digest);
+
+    char stamp[32];
+    time_t now = time(NULL);
+    strftime(stamp, sizeof stamp, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
+
+    write_file(P("%s/metadata/source.json", o->outdir),
+               "{\n"
+               "  \"source_image\": \"%s\",\n"
+               "  \"source_digest\": \"%s\",\n"
+               "  \"extracted_at\": \"%s\",\n"
+               "  \"extracted_by\": \"c2vm/%s\",\n"
+               "  \"host\": \"%s\"\n"
+               "}\n",
+               J(o->image), J(digest), J(stamp), J(C2VM_VERSION), J(host));
+
+    free(digest);
+    free(host);
 }
 
 // creates and partitions the raw disk file. No loop device involved yet
@@ -361,7 +393,7 @@ static void mount_all(const struct build_opts *o, const char *loop)
     run_ok("cp", "/etc/resolv.conf", P("%s/etc/resolv.conf", o->mnt), NULL);
 }
 
-static void write_guest_config(const struct build_opts *o, const char *loop)
+static void write_guest_config(struct build_opts *o, const char *loop)
 {
     step("writing guest configuration");
 
@@ -380,6 +412,10 @@ static void write_guest_config(const struct build_opts *o, const char *loop)
                "UUID=%s / %s defaults 0 1\n"
                "UUID=%s /boot/efi vfat umask=0077 0 1\n",
                root_uuid, o->fstype, esp_uuid);
+
+    /* Recorded so `c2vm boot-test` can assert the guest mounted this exact
+       filesystem, rather than merely mounting something. */
+    snprintf(o->root_uuid, sizeof o->root_uuid, "%s", root_uuid);
 
     write_file(P("%s/etc/hostname", o->mnt), "%s\n", o->hostname);
     write_file(P("%s/etc/hosts", o->mnt),
@@ -719,6 +755,12 @@ static void write_metadata(const struct build_opts *o)
                              "-f=${Version}", "grub-efi-amd64", NULL);
     char *host = run_capture("uname", "-srm", NULL);
 
+    /* Same guard one step later: source.json is on disk between the two, and
+       this is the last point before the value reaches the predicate. */
+    if (!dry_run && strncmp(digest, "sha256:", 7) != 0)
+        die("%s/metadata/source.json holds no digest: %.60s",
+            o->outdir, digest);
+
     char stamp[32];
     time_t now = time(NULL);
     strftime(stamp, sizeof stamp, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
@@ -737,7 +779,8 @@ static void write_metadata(const struct build_opts *o)
                "    \"size\": \"%s\",\n"
                "    \"fstype\": \"%s\",\n"
                "    \"formats\": \"%s\",\n"
-               "    \"compressed\": %s\n"
+               "    \"compressed\": %s,\n"
+               "    \"root_uuid\": \"%s\"\n"
                "  },\n"
                "  \"kernel\": {\n"
                "    \"package\": \"%s\",\n"
@@ -760,7 +803,7 @@ static void write_metadata(const struct build_opts *o)
                J(C2VM_VERSION), J(stamp), J(host),
                J(o->image), J(digest),
                J(o->size), J(o->fstype), J(o->format),
-               o->compress ? "true" : "false",
+               o->compress ? "true" : "false", J(o->root_uuid),
                J(o->kernel), J(kver),
                J(gver),
                J(o->hostname), J(o->user), J(o->packages ? o->packages : ""),
