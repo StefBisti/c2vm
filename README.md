@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**c2vm converts an OCI container image into a bootable VM disk (QCOW2, OVA)
+**c2vm converts a Debian-family OCI image into a bootable VM disk (QCOW2, OVA)
 while preserving and re-establishing the supply-chain chain of custody the
 conversion normally destroys** — a signed, SBOM-backed attestation binds the
 output disk back to the source image digest and to every decision c2vm made

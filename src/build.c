@@ -54,6 +54,7 @@ struct build_opts
     const char *outdir;
     const char *user;
     const char *pw_file;
+    const char *backend;
     bool compress;
     char mnt[PATH_MAX];
     char root_uuid[64]; /* filled in by write_guest_config */
@@ -153,6 +154,7 @@ static void build_usage(void)
         "  --user <name>          default user account (default: c2vm)\n"
         "  --root-password <file> file holding a root password, hashed\n"
         "  --compress             compress the qcow2 (changes its hash)\n"
+        "  --backend <name>       build backend (only: native)\n"
         "  --dry-run              print every command instead of running it\n",
         stderr);
 }
@@ -184,6 +186,7 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
     o->outdir = "build";
     o->user = "c2vm";
     o->pw_file = NULL;
+    o->backend = "native";
     o->compress = false;
 
     for (int i = 0; i < argc; i++)
@@ -230,6 +233,8 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
                 whereToWriteTheValue = &o->user;
             else if (!strcmp(a, "--root-password"))
                 whereToWriteTheValue = &o->pw_file;
+            else if (!strcmp(a, "--backend"))
+                whereToWriteTheValue = &o->backend;
 
             else
             {
@@ -264,6 +269,12 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
     if (!has_format(o, "qcow2") && !has_format(o, "raw") && !has_format(o, "ova"))
     {
         fprintf(stderr, "c2vm build: --format must include qcow2, raw or ova\n");
+        return EXIT_USAGE;
+    }
+    if (strcmp(o->backend, "native") != 0)
+    {
+        fprintf(stderr, "c2vm build: unknown backend '%s' (only: native)\n",
+                o->backend);
         return EXIT_USAGE;
     }
 
@@ -769,7 +780,7 @@ static void write_metadata(const struct build_opts *o)
                "{\n"
                "  \"c2vm_version\": \"%s\",\n"
                "  \"built_at\": \"%s\",\n"
-               "  \"backend\": \"native\",\n"
+               "  \"backend\": \"%s\",\n"
                "  \"host_kernel\": \"%s\",\n"
                "  \"source\": {\n"
                "    \"image\": \"%s\",\n"
@@ -800,7 +811,7 @@ static void write_metadata(const struct build_opts *o)
                "  \"packages_before\": \"metadata/packages-before.txt\",\n"
                "  \"packages_after\": \"metadata/packages-after.txt\"\n"
                "}\n",
-               J(C2VM_VERSION), J(stamp), J(host),
+               J(C2VM_VERSION), J(stamp), J(o->backend), J(host),
                J(o->image), J(digest),
                J(o->size), J(o->fstype), J(o->format),
                o->compress ? "true" : "false", J(o->root_uuid),
