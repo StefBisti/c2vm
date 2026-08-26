@@ -4,7 +4,7 @@ CPPFLAGS ?= -D_GNU_SOURCE -Isrc
 IMAGE ?= ubuntu:24.04
 ARTIFACT ?= build/disk.qcow2
 
-SRCS := c2vm.c src/run.c src/cleanup.c src/build.c src/ova.c src/boottest.c
+SRCS := c2vm.c src/run.c src/cleanup.c src/build.c src/ova.c src/boottest.c src/json.c
 OBJS := $(SRCS:.c=.o)
 LDLIBS ?= -lcrypt
 
@@ -15,7 +15,7 @@ all: c2vm
 c2vm: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDLIBS)
 
-$(OBJS): src/run.h src/cleanup.h src/build.h src/ova.h src/boottest.h
+$(OBJS): src/run.h src/cleanup.h src/build.h src/ova.h src/boottest.h src/json.h
 
 demo: c2vm
 	./c2vm build $(IMAGE) --format qcow2

@@ -2,6 +2,7 @@
 #define C2VM_RUN_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 extern bool dry_run;
 
@@ -12,6 +13,7 @@ void run_ok(const char *prog, ...);       /* dies if the command fails */
 char *run_capture(const char *prog, ...); /* trimmed stdout, caller frees */
 
 void write_file(const char *path, const char *fmt, ...);
+char *read_file(const char *path, size_t max); /* whole file, caller frees */
 void step(const char *fmt, ...); /* progress heading */
 void die(const char *fmt, ...);  /* error + cleanup + exit(1) */
 

@@ -1,5 +1,6 @@
 #include "build.h"
 #include "cleanup.h"
+#include "json.h"
 #include "ova.h"
 #include "run.h"
 
@@ -61,65 +62,6 @@ struct build_opts
 };
 
 /* P() lives in run.c: src/ova.c needs it too. */
-
-/*
- * JSON-escape into the same kind of rotating pool as P(). build.json becomes
- * the signed attestation predicate in Phase 3, so a quote or a backslash in
- * an image reference or a package list must not be able to break its syntax.
- * The pool is larger than P()'s because one write_file() call escapes a dozen
- * fields at once.
- */
-static const char *J(const char *s)
-{
-    static char pool[16][PATH_MAX];
-    static size_t next;
-
-    char *buf = pool[next];
-    next = (next + 1) % NELEMS(pool);
-
-    size_t w = 0;
-    for (const unsigned char *p = (const unsigned char *)(s ? s : ""); *p; p++)
-    {
-        char esc[8];
-        const char *rep = esc;
-
-        switch (*p)
-        {
-        case '"':
-            rep = "\\\"";
-            break;
-        case '\\':
-            rep = "\\\\";
-            break;
-        case '\n':
-            rep = "\\n";
-            break;
-        case '\r':
-            rep = "\\r";
-            break;
-        case '\t':
-            rep = "\\t";
-            break;
-        default:
-            if (*p < 0x20)
-                snprintf(esc, sizeof esc, "\\u%04x", *p);
-            else
-            {
-                esc[0] = (char)*p;
-                esc[1] = '\0';
-            }
-        }
-
-        size_t n = strlen(rep);
-        if (w + n >= PATH_MAX)
-            break; /* truncate rather than overflow */
-        memcpy(buf + w, rep, n);
-        w += n;
-    }
-    buf[w] = '\0';
-
-    return buf;
-}
 
 // ex: has_format(o, "qcow2") -> true (o->format = "qcow2,ova")
 static bool has_format(const struct build_opts *o, const char *want)
@@ -534,23 +476,6 @@ static void install_system(const struct build_opts *o)
     run_ok("rm", "-f", P("%s/etc/resolv.conf", o->mnt), NULL);
 }
 
-static char *read_small_file(const char *path)
-{
-    FILE *f = fopen(path, "r");
-    if (!f)
-        die("cannot read %s: %s", path, strerror(errno));
-
-    char buf[8192];
-    size_t n = fread(buf, 1, sizeof buf - 1, f);
-    fclose(f);
-    buf[n] = '\0';
-
-    while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r' || buf[n - 1] == ' '))
-        buf[--n] = '\0';
-
-    return strdup(buf);
-}
-
 static char *hash_password(const char *plain)
 {
     static const char ALPHABET[] =
@@ -582,7 +507,7 @@ static char *read_source_digest(const struct build_opts *o)
         return strdup("DRYRUN");
 
     const char *path = P("%s/metadata/source.json", o->outdir);
-    char *json = read_small_file(path);
+    char *json = read_file(path, 8192);
 
     /* Small enough not to justify a JSON parser: one known key, one string. */
     char *key = strstr(json, "\"source_digest\"");
@@ -597,17 +522,91 @@ static char *read_source_digest(const struct build_opts *o)
     return digest;
 }
 
+/* Builds the authorized_keys block of the user-data, or "" for no key. */
+static void ssh_key_block(const struct build_opts *o, char *out, size_t cap)
+{
+    out[0] = '\0';
+    if (!o->ssh_key)
+        return;
+
+    char *keys = read_file(o->ssh_key, 8192);
+    size_t w = 0;
+
+    /* One list item per line: an authorized_keys file with two keys in it
+       is one YAML scalar with a newline in it, which cloud-init rejects —
+       and it rejects the whole user-data along with it. */
+    for (char *l = strtok(keys, "\r\n"); l; l = strtok(NULL, "\r\n"))
+    {
+        while (*l == ' ' || *l == '\t')
+            l++;
+        if (*l == '\0' || *l == '#')
+            continue;
+
+        /* Quoted, because a key comment may contain '#'. Which means the
+           two characters that would end the quote have to go. */
+        if (strchr(l, '"') || strchr(l, '\\'))
+            die("--ssh-key: %s contains a quote or backslash", o->ssh_key);
+
+        if (w == 0)
+            w = (size_t)snprintf(out, cap, "    ssh_authorized_keys:\n");
+
+        int n = snprintf(out + w, cap - w, "      - \"%s\"\n", l);
+        if (n < 0 || (size_t)n >= cap - w)
+            die("--ssh-key: %s has too many keys", o->ssh_key);
+        w += (size_t)n;
+    }
+
+    if (w == 0)
+        die("--ssh-key: %s contains no keys", o->ssh_key);
+
+    free(keys);
+}
+
+/*
+ * Anything cloned from this disk must not inherit an identity. systemd
+ * regenerates the machine ID from an empty file on first boot, and
+ * cloud-init writes fresh host keys; leaving either in place gives every VM
+ * built from this image one identity and one host key.
+ */
+static void reset_identity(const struct build_opts *o)
+{
+    run_ok("truncate", "-s", "0", P("%s/etc/machine-id", o->mnt), NULL);
+    run_ok("rm", "-f", P("%s/var/lib/dbus/machine-id", o->mnt), NULL);
+    run_ok("find", P("%s/etc/ssh", o->mnt), "-name", "ssh_host_*", "-delete", NULL);
+}
+
+/*
+ * Nothing but the seed is reachable from a local VM. Without the datasource
+ * pin cloud-init opens every boot by probing EC2, Azure and GCE metadata
+ * endpoints that will never answer.
+ */
+static void enable_cloud_init(const struct build_opts *o)
+{
+    run_ok("mkdir", "-p", P("%s/etc/cloud/cloud.cfg.d", o->mnt), NULL);
+    write_file(P("%s/etc/cloud/cloud.cfg.d/99-c2vm.cfg", o->mnt),
+               "datasource_list: [ NoCloud, None ]\n");
+
+    /* The package preset normally enables these. Be explicit: a disk that
+       silently ships a disabled cloud-init boots with no user and no network. */
+    static const char *CI_UNITS[] = {
+        "cloud-init-local.service",
+        "cloud-init.service",
+        "cloud-config.service",
+        "cloud-final.service",
+    };
+    for (size_t i = 0; i < NELEMS(CI_UNITS); i++)
+        run("chroot", o->mnt, "systemctl", "enable", CI_UNITS[i], NULL);
+}
+
 static void configure_cloud_init(const struct build_opts *o)
 {
     step("seeding cloud-init");
 
+    enable_cloud_init(o);
+
     char seed[PATH_MAX + 64];
     snprintf(seed, sizeof seed, "%s/var/lib/cloud/seed/nocloud", o->mnt);
     run_ok("mkdir", "-p", seed, NULL);
-
-    run_ok("mkdir", "-p", P("%s/etc/cloud/cloud.cfg.d", o->mnt), NULL);
-    write_file(P("%s/etc/cloud/cloud.cfg.d/99-c2vm.cfg", o->mnt),
-               "datasource_list: [ NoCloud, None ]\n");
 
     char stamp[32];
     time_t now = time(NULL);
@@ -629,40 +628,8 @@ static void configure_cloud_init(const struct build_opts *o)
                "    dhcp4: true\n"
                "    dhcp6: false\n");
 
-    char keyblock[8192] = "";
-    if (o->ssh_key)
-    {
-        char *keys = read_small_file(o->ssh_key);
-        size_t w = 0;
-
-        for (char *l = strtok(keys, "\r\n"); l; l = strtok(NULL, "\r\n"))
-        {
-            while (*l == ' ' || *l == '\t')
-                l++;
-            if (*l == '\0' || *l == '#')
-                continue;
-
-            /* Quoted, because a key comment may contain '#'. Which means the
-               two characters that would end the quote have to go. */
-            if (strchr(l, '"') || strchr(l, '\\'))
-                die("--ssh-key: %s contains a quote or backslash", o->ssh_key);
-
-            if (w == 0)
-                w = (size_t)snprintf(keyblock, sizeof keyblock,
-                                     "    ssh_authorized_keys:\n");
-
-            int n = snprintf(keyblock + w, sizeof keyblock - w,
-                             "      - \"%s\"\n", l);
-            if (n < 0 || (size_t)n >= sizeof keyblock - w)
-                die("--ssh-key: %s has too many keys", o->ssh_key);
-            w += (size_t)n;
-        }
-
-        if (w == 0)
-            die("--ssh-key: %s contains no keys", o->ssh_key);
-
-        free(keys);
-    }
+    char keyblock[8192];
+    ssh_key_block(o, keyblock, sizeof keyblock);
 
     /*
      * The seed ships inside a distributable disk, so it must never hold a
@@ -672,7 +639,7 @@ static void configure_cloud_init(const struct build_opts *o)
     char *pwhash = NULL;
     if (o->pw_file)
     {
-        char *plain = read_small_file(o->pw_file);
+        char *plain = read_file(o->pw_file, 8192);
         if (plain[0] == '\0')
             die("--root-password: %s is empty", o->pw_file);
 
@@ -731,28 +698,7 @@ static void configure_cloud_init(const struct build_opts *o)
         free(pwhash);
     }
 
-    /*
-     * systemd regenerates the machine ID on first boot. Without this every
-     * clone of this disk answers to one identity, and a DHCP server hands
-     * them all the same lease.
-     */
-    run_ok("truncate", "-s", "0", P("%s/etc/machine-id", o->mnt), NULL);
-    run_ok("rm", "-f", P("%s/var/lib/dbus/machine-id", o->mnt), NULL);
-
-    /* Same argument for host keys: baked-in keys would be shared by every VM
-       built from this image. cloud-init writes fresh ones on first boot. */
-    run_ok("find", P("%s/etc/ssh", o->mnt), "-name", "ssh_host_*", "-delete", NULL);
-
-    /* The package preset normally enables these. Be explicit: a disk that
-       silently ships a disabled cloud-init boots with no user and no network. */
-    static const char *CI_UNITS[] = {
-        "cloud-init-local.service",
-        "cloud-init.service",
-        "cloud-config.service",
-        "cloud-final.service",
-    };
-    for (size_t i = 0; i < NELEMS(CI_UNITS); i++)
-        run("chroot", o->mnt, "systemctl", "enable", CI_UNITS[i], NULL);
+    reset_identity(o);
 }
 
 static void write_metadata(const struct build_opts *o)

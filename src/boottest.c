@@ -1,5 +1,6 @@
 #include "boottest.h"
 #include "cleanup.h"
+#include "json.h"
 #include "run.h"
 
 #include <errno.h>
@@ -40,62 +41,6 @@ static void test_usage(void)
         "  --port <n>          host port forwarded to guest 22 (default: 2222)\n"
         "  --timeout <sec>     hard limit, tripled without KVM (default: 180)\n",
         stderr);
-}
-
-static char *json_get(const char *json, const char *key)
-{
-    char *k = strstr(json, P("\"%s\"", key));
-    if (!k)
-        return NULL;
-
-    char *val = strchr(k + strlen(key) + 2, '"');
-    if (!val)
-        return NULL;
-
-    char *end = strchr(val + 1, '"');
-    if (!end)
-        return NULL;
-
-    size_t n = (size_t)(end - val - 1);
-    char *out = malloc(n + 1);
-    if (!out)
-        die("out of memory");
-    memcpy(out, val + 1, n);
-    out[n] = '\0';
-
-    return out;
-}
-
-static char *json_get_in(const char *json, const char *section, const char *key)
-{
-    const char *from = strstr(json, P("\"%s\"", section));
-    if (!from)
-        return NULL;
-
-    return json_get(from, key);
-}
-
-static char *read_all(const char *path)
-{
-    FILE *f = fopen(path, "r");
-    if (!f)
-        die("cannot read %s: %s", path, strerror(errno));
-
-    char buf[65536];
-    size_t n = fread(buf, 1, sizeof buf - 1, f);
-    bool overflow = fgetc(f) != EOF; /* anything left over means it is short */
-    fclose(f);
-
-    if (overflow)
-        die("%s is larger than %zu bytes", path, sizeof buf - 1);
-    buf[n] = '\0';
-
-    /* A NUL would end the string early and the assertions would then report
-       a missing field rather than a corrupt file. */
-    if (strlen(buf) != n)
-        die("%s contains a NUL byte", path);
-
-    return strdup(buf);
 }
 
 static bool has_suffix(const char *s, const char *suffix)
@@ -527,7 +472,7 @@ int cmd_boot_test(int argc, char *argv[])
                 t.timeout);
     }
 
-    t.meta = read_all(P("%s/metadata/build.json", t.outdir));
+    t.meta = read_file(P("%s/metadata/build.json", t.outdir), 65536);
 
     /* Which account exists in the guest is a build decision, not a test
        parameter. Read it back rather than guessing, the same way every

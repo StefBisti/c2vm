@@ -176,6 +176,48 @@ void run_argv_ok(char *const argv[])
         die("%s failed (exit %d)", argv[0], rc);
 }
 
+/*
+ * Read a small file whole. Heap, not a stack buffer: --root-password ends up
+ * here, and a caller that scrubs the returned string should not be left with
+ * a second copy on our stack. Trailing whitespace goes, so that a key file or
+ * a password file written by an editor behaves the same as one that is not.
+ */
+char *read_file(const char *path, size_t max)
+{
+    FILE *f = fopen(path, "r");
+    if (!f)
+        die("cannot read %s: %s", path, strerror(errno));
+
+    char *buf = malloc(max + 1);
+    if (!buf)
+        die("out of memory");
+
+    size_t n = fread(buf, 1, max, f);
+    bool overflow = fgetc(f) != EOF; /* anything left means it did not fit */
+    fclose(f);
+
+    if (overflow)
+    {
+        free(buf);
+        die("%s is larger than %zu bytes", path, max);
+    }
+    buf[n] = '\0';
+
+    /* A NUL would end the string early, and a caller looking for a field
+       would then report it missing rather than the file corrupt. */
+    if (strlen(buf) != n)
+    {
+        free(buf);
+        die("%s contains a NUL byte", path);
+    }
+
+    while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r' ||
+                     buf[n - 1] == ' ' || buf[n - 1] == '\t'))
+        buf[--n] = '\0';
+
+    return buf;
+}
+
 // write a file from a format string
 void write_file(const char *path, const char *fmt, ...)
 {
