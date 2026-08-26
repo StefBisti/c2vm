@@ -241,9 +241,7 @@ static char *ssh_out(const struct test_opts *t, const char *cmd)
     return out;
 }
 
-/* The serial console is the half of the test that does not depend on the
-   network working, which is why both halves are required. */
-static bool serial_shows_login(const char *logpath)
+static bool serial_has(const char *logpath, const char *needle)
 {
     FILE *f = fopen(logpath, "r");
     if (!f)
@@ -252,7 +250,7 @@ static bool serial_shows_login(const char *logpath)
     char line[4096];
     bool found = false;
     while (!found && fgets(line, sizeof line, f))
-        if (strstr(line, "login:"))
+        if (strstr(line, needle))
             found = true;
 
     fclose(f);
@@ -261,6 +259,13 @@ static bool serial_shows_login(const char *logpath)
 
 static void print_tail(const char *logpath, int lines)
 {
+    if (access(logpath, R_OK) != 0)
+    {
+        fprintf(stderr, "\n--- no serial output: %s was never written ---\n",
+                logpath);
+        return;
+    }
+
     fprintf(stderr, "\n--- last %d lines of %s ---\n", lines, logpath);
     run("tail", "-n", P("%d", lines), logpath, NULL);
     fputs("--- end ---\n", stderr);
@@ -285,7 +290,13 @@ static void wait_for_boot(const struct test_opts *t, pid_t qemu,
             die("qemu exited before the guest came up");
         }
 
-        if (!saw_login && serial_shows_login(logpath))
+        if (serial_has(logpath, "Kernel panic - not syncing"))
+        {
+            print_tail(logpath, 50);
+            die("the guest panicked");
+        }
+
+        if (!saw_login && serial_has(logpath, "login:"))
         {
             saw_login = true;
             fputs("  serial: login prompt reached\n", stderr);
