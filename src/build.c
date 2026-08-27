@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 #include <crypt.h>
@@ -59,6 +60,10 @@ struct build_opts
     bool compress;
     char mnt[PATH_MAX];
     char root_uuid[64]; /* filled in by write_guest_config */
+
+    /* Read while the chroot still exists, used once it is gone. */
+    char kver[64]; // kernel version
+    char gver[64]; // grub version
 };
 
 static bool has_format(const struct build_opts *o, const char *want)
@@ -384,7 +389,7 @@ static void apt_install(const struct build_opts *o)
 
 // writes build/metadata/packages-before.txt and build/metadata/packages-after.txt,
 // build/mnt gets a kernel, GRUB installed, serial console enabled
-static void install_system(const struct build_opts *o)
+static void install_system(struct build_opts *o)
 {
     step("installing kernel, bootloader and init");
 
@@ -418,6 +423,15 @@ static void install_system(const struct build_opts *o)
     char *after = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Package}\t${Version}\n", NULL);
     write_file(P("%s/metadata/packages-after.txt", o->outdir), "%s\n", after);
     free(after);
+
+    /* Read here rather than in write_metadata: build.json is written after
+       the disk has been converted now, by which point the chroot is gone. */
+    char *kver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", o->kernel, NULL);
+    char *gver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", "grub-efi-amd64", NULL);
+    snprintf(o->kver, sizeof o->kver, "%s", kver);
+    snprintf(o->gver, sizeof o->gver, "%s", gver);
+    free(kver);
+    free(gver);
 
     run_ok("chroot", o->mnt, "apt-get", "clean", NULL);
     run_ok("rm", "-f", P("%s/usr/sbin/policy-rc.d", o->mnt), NULL);
@@ -625,14 +639,51 @@ static void configure_cloud_init(const struct build_opts *o)
     reset_identity(o);
 }
 
+static void artifact_list(const struct build_opts *o, char *out, size_t cap)
+{
+    static const char *NAMES[] = {"disk.raw", "disk.qcow2", "disk.ova"};
+
+    out[0] = '\0';
+    size_t w = 0;
+    const char *sep = "";
+
+    for (size_t i = 0; i < NELEMS(NAMES); i++)
+    {
+        const char *path = P("%s/%s", o->outdir, NAMES[i]);
+
+        struct stat st;
+        if (dry_run || stat(path, &st) != 0)
+            continue;
+
+        char *sum = run_capture("sha256sum", path, NULL);
+        char *sp = strchr(sum, ' ');
+        if (sp)
+            *sp = '\0';
+
+        int n = snprintf(out + w, cap - w,
+                         "%s    { \"name\": \"%s\", \"sha256\": \"%s\","
+                         " \"size\": %llu }",
+                         sep, J(NAMES[i]), J(sum),
+                         (unsigned long long)st.st_size);
+        free(sum);
+
+        if (n < 0 || (size_t)n >= cap - w)
+            die("artefact list does not fit in %zu bytes", cap);
+
+        w += (size_t)n;
+        sep = ",\n";
+    }
+}
+
 static void write_metadata(const struct build_opts *o)
 {
     step("recording build metadata");
 
     char *digest = read_source_digest(o);
-    char *kver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", o->kernel, NULL);
-    char *gver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", "grub-efi-amd64", NULL);
     char *host = run_capture("uname", "-srm", NULL);
+
+    char arts[2048];
+    artifact_list(o, arts, sizeof arts);
 
     if (!dry_run && strncmp(digest, "sha256:", 7) != 0)
         die("%s/metadata/source.json holds no digest: %.60s",
@@ -674,6 +725,7 @@ static void write_metadata(const struct build_opts *o)
                "    \"ssh_key\": %s,\n"
                "    \"root_password\": %s\n"
                "  },\n"
+               "  \"artifacts\": [\n%s\n  ],\n"
                "  \"packages_before\": \"metadata/packages-before.txt\",\n"
                "  \"packages_after\": \"metadata/packages-after.txt\"\n"
                "}\n",
@@ -681,15 +733,14 @@ static void write_metadata(const struct build_opts *o)
                J(o->image), J(digest),
                J(o->size), J(o->fstype), J(o->format),
                o->compress ? "true" : "false", J(o->root_uuid),
-               J(o->kernel), J(kver),
-               J(gver),
+               J(o->kernel), J(o->kver),
+               J(o->gver),
                J(o->hostname), J(o->user), J(o->packages ? o->packages : ""),
                o->ssh_key ? "true" : "false",
-               o->pw_file ? "true" : "false");
+               o->pw_file ? "true" : "false",
+               arts);
 
     free(digest);
-    free(kver);
-    free(gver);
     free(host);
 }
 
@@ -752,13 +803,15 @@ int cmd_build(int argc, char *argv[])
     write_guest_config(&o, loop);
     install_system(&o);
     configure_cloud_init(&o);
-    write_metadata(&o);
 
     /* Unmount and detach before converting, so qcow2 sees a quiesced disk. */
     cleanup_run();
     free(loop);
 
     convert_formats(&o);
+
+    /* Last, so that it can record the hash of every artefact above. */
+    write_metadata(&o);
 
     step("done");
     fprintf(stderr, "  %s/disk.raw\n", o.outdir);

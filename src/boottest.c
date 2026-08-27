@@ -137,6 +137,7 @@ static pid_t spawn_qemu(const struct test_opts *t, const char *disk, const char 
 
     /* A guest that panics and reboots would otherwise loop until timeout. */
     argv[n++] = "-no-reboot";
+    argv[n++] = "-snapshot";
     argv[n] = NULL;
 
     fputs("  +", stderr);
