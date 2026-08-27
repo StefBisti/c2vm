@@ -47,10 +47,6 @@ void cleanup_push_losetup(const char *dev) { push(ACT_LOSETUP, dev); }
 /* A boot test that dies mid-run must not leave a VM holding the disk. */
 void cleanup_push_kill(pid_t pid, const char *what) { push(ACT_KILL, what)->pid = pid; }
 
-/*
- * The caller reaped the child itself. Without this the pid stays on the
- * stack and cleanup signals whatever the kernel has since reassigned it to.
- */
 void cleanup_drop_kill(pid_t pid)
 {
     for (size_t i = 0; i < action_count; i++)
@@ -71,8 +67,7 @@ static bool loop_attached(const char *dev)
 }
 
 /*
- * Drains the stack, so calling it twice is harmless — which matters because
- * both atexit() and the signal handler reach it.
+ * Drains the stack, so calling it twice is harmless
  */
 void cleanup_run(void)
 {
@@ -85,17 +80,10 @@ void cleanup_run(void)
         switch (a->kind)
         {
         case ACT_UMOUNT:
-            /* A lazy detach is better than leaving the mount behind. */
             if (run("umount", "-R", a->path, NULL) != 0)
                 run("umount", "-R", "-l", a->path, NULL);
             break;
         case ACT_LOSETUP:
-            /*
-             * --partscan makes udev, and udisks2 on a desktop, open the
-             * partition devices. Detaching while they are still open only
-             * sets the kernel's autoclear flag and losetup reports success
-             * while the device lingers. Settle first so those handles close.
-             */
             run("udevadm", "settle", NULL);
             run("losetup", "-d", a->path, NULL);
             run("udevadm", "settle", NULL);
@@ -110,8 +98,6 @@ void cleanup_run(void)
             {
                 fprintf(stderr, "  killing %s (pid %d)\n", a->path, (int)a->pid);
 
-                /* SIGKILL after a grace period: QEMU normally goes on TERM.
-                   Reaping in the loop, so an exit ends the wait at once. */
                 bool gone = false;
                 for (int i = 0; i < 20 && !gone; i++)
                 {
@@ -132,10 +118,7 @@ void cleanup_run(void)
     }
 }
 
-/*
- * Not strictly async-signal-safe (it forks and prints), but the alternative
- * is leaking loop devices and mounts on Ctrl-C, which is worse.
- */
+
 static void on_signal(int sig)
 {
     fprintf(stderr, "\nc2vm: interrupted by signal %d\n", sig);

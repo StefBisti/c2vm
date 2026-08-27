@@ -42,11 +42,6 @@ static void echo(char *const argv[])
     fputc('\n', stderr);
 }
 
-/*
- * Fork and exec argv. If out is non-NULL the child's stdout is captured
- * into a malloc'd string and stored there, trailing newline stripped.
- */
-
 // out = second return value
 static int spawn(char *const argv[], char **out)
 {
@@ -162,8 +157,7 @@ int run_argv(char *const argv[])
     return spawn(argv, NULL);
 }
 
-/* Like run_capture, but for an argv built at runtime. Returns the exit
-   status instead of dying, so a caller can accept a non-zero one. */
+/* Like run_capture, but for an argv built at runtime */
 int run_argv_capture(char *const argv[], char **out)
 {
     return spawn(argv, out);
@@ -176,12 +170,6 @@ void run_argv_ok(char *const argv[])
         die("%s failed (exit %d)", argv[0], rc);
 }
 
-/*
- * Read a small file whole. Heap, not a stack buffer: --root-password ends up
- * here, and a caller that scrubs the returned string should not be left with
- * a second copy on our stack. Trailing whitespace goes, so that a key file or
- * a password file written by an editor behaves the same as one that is not.
- */
 char *read_file(const char *path, size_t max)
 {
     FILE *f = fopen(path, "r");
@@ -203,8 +191,7 @@ char *read_file(const char *path, size_t max)
     }
     buf[n] = '\0';
 
-    /* A NUL would end the string early, and a caller looking for a field
-       would then report it missing rather than the file corrupt. */
+
     if (strlen(buf) != n)
     {
         free(buf);
@@ -261,7 +248,7 @@ void die(const char *fmt, ...)
     exit(EXIT_FAILURE); /* atexit handler unwinds mounts and loop devices */
 }
 
-// useful because it requires no buffer for formatting
+// requires no buffer for formatting in the caller
 const char *P(const char *fmt, ...)
 {
     static char pool[8][PATH_MAX];

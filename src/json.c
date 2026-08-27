@@ -8,6 +8,7 @@
 
 #define NELEMS(a) (sizeof(a) / sizeof(a)[0])
 
+// escapes strings with rotating buffers
 const char *J(const char *s)
 {
     static char pool[16][PATH_MAX];
@@ -60,6 +61,7 @@ const char *J(const char *s)
     return buf;
 }
 
+// only string values
 char *json_get(const char *json, const char *key)
 {
     char *k = strstr(json, P("\"%s\"", key));

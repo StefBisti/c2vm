@@ -61,9 +61,6 @@ struct build_opts
     char root_uuid[64]; /* filled in by write_guest_config */
 };
 
-/* P() lives in run.c: src/ova.c needs it too. */
-
-// ex: has_format(o, "qcow2") -> true (o->format = "qcow2,ova")
 static bool has_format(const struct build_opts *o, const char *want)
 {
     const char *p = o->format;
@@ -114,7 +111,6 @@ static bool readable(const char *flag, const char *path)
     return true;
 }
 
-/* Returns 0 on success, EXIT_USAGE on a bad argument list. */
 static int parse_opts(int argc, char *argv[], struct build_opts *o)
 {
     o->image = NULL;
@@ -228,12 +224,7 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
     return 0;
 }
 
-/* ---------------------------------------------------------------- stages */
-
-/*
- * Idempotency: every run starts from an empty output directory, so a second
- * run on a dirty machine rebuilds rather than failing on leftovers.
- */
+#pragma region STAGES
 
 // deletes then recreates o->outdir
 static void prepare_outdir(const struct build_opts *o)
@@ -246,22 +237,13 @@ static void prepare_outdir(const struct build_opts *o)
 }
 
 // populates build/rootfs from the image
-/*
- * The script resolves the tag, unpacks the layers and prints the digest it
- * resolved — nothing else reaches its stdout. source.json is written here
- * rather than there because it feeds the Phase 3 attestation predicate, and
- * a shell heredoc interpolating an image reference into JSON has no escaping.
- */
 static void extract_rootfs(const struct build_opts *o)
 {
     step("extracting %s", o->image);
 
-    char *digest = run_capture("src/extract-rootfs.sh", o->image,
-                               P("%s/rootfs", o->outdir), NULL);
+    char *digest = run_capture("src/extract-rootfs.sh", o->image, P("%s/rootfs", o->outdir), NULL);
     char *host = run_capture("uname", "-srm", NULL);
 
-    /* Cheap insurance for the one field Phase 3 binds the disk to: anything
-       a subcommand leaks onto the script's stdout would land here instead. */
     if (!dry_run && strncmp(digest, "sha256:", 7) != 0)
         die("extract-rootfs.sh did not return a digest: %.60s", digest);
 
@@ -304,9 +286,7 @@ static char *attach_and_format(const struct build_opts *o)
 {
     step("attaching and formatting");
 
-    /* --partscan is what creates the pN nodes */
-    char *loop = run_capture("losetup", "--find", "--show", "--partscan",
-                             P("%s/disk.raw", o->outdir), NULL);
+    char *loop = run_capture("losetup", "--find", "--show", "--partscan", P("%s/disk.raw", o->outdir), NULL);
     cleanup_push_losetup(loop);
 
     run_ok("mkfs.vfat", "-F32", "-n", "ESP", P("%sp1", loop), NULL);
@@ -321,18 +301,12 @@ static void mount_all(const struct build_opts *o, const char *loop)
     run_ok("mount", P("%sp2", loop), o->mnt, NULL);
     cleanup_push_umount(o->mnt);
 
-    run_ok("rsync", "-aHAX", "--numeric-ids",
-           P("%s/rootfs/", o->outdir), P("%s/", o->mnt), NULL);
+    run_ok("rsync", "-aHAX", "--numeric-ids", P("%s/rootfs/", o->outdir), P("%s/", o->mnt), NULL);
 
     run_ok("mkdir", "-p", P("%s/boot/efi", o->mnt), NULL);
     run_ok("mount", P("%sp1", loop), P("%s/boot/efi", o->mnt), NULL);
     cleanup_push_umount(P("%s/boot/efi", o->mnt));
 
-    /*
-     * The five interfaces dpkg and grub need inside the chroot. Each is
-     * registered separately so cleanup unmounts them in reverse order, and
-     * made rslave so unmounting cannot propagate back to the host's /dev.
-     */
     static const char *BINDS[] = {"dev", "dev/pts", "proc", "sys", "run"};
     for (size_t i = 0; i < NELEMS(BINDS); i++)
     {
@@ -342,7 +316,6 @@ static void mount_all(const struct build_opts *o, const char *loop)
         cleanup_push_umount(target);
     }
 
-    /* dns */
     run_ok("cp", "/etc/resolv.conf", P("%s/etc/resolv.conf", o->mnt), NULL);
 }
 
@@ -350,38 +323,29 @@ static void write_guest_config(struct build_opts *o, const char *loop)
 {
     step("writing guest configuration");
 
-    /* Postinst scripts must not try to start services with no PID 1 here. */
     write_file(P("%s/usr/sbin/policy-rc.d", o->mnt), "#!/bin/sh\nexit 101\n");
     run_ok("chmod", "0755", P("%s/usr/sbin/policy-rc.d", o->mnt), NULL);
 
-    char *root_uuid = run_capture("blkid", "-s", "UUID", "-o", "value",
-                                  P("%sp2", loop), NULL);
-    char *esp_uuid = run_capture("blkid", "-s", "UUID", "-o", "value",
-                                 P("%sp1", loop), NULL);
+    char *root_uuid = run_capture("blkid", "-s", "UUID", "-o", "value", P("%sp2", loop), NULL);
+    char *esp_uuid = run_capture("blkid", "-s", "UUID", "-o", "value", P("%sp1", loop), NULL);
 
-    /* By UUID, never by /dev/sdaN — the guest enumerates disks differently. */
     write_file(P("%s/etc/fstab", o->mnt),
                "# <device> <mount> <fs> <options> <dump> <pass>\n"
                "UUID=%s / %s defaults 0 1\n"
                "UUID=%s /boot/efi vfat umask=0077 0 1\n",
                root_uuid, o->fstype, esp_uuid);
 
-    /* Recorded so `c2vm boot-test` can assert the guest mounted this exact
-       filesystem, rather than merely mounting something. */
     snprintf(o->root_uuid, sizeof o->root_uuid, "%s", root_uuid);
 
     write_file(P("%s/etc/hostname", o->mnt), "%s\n", o->hostname);
-    write_file(P("%s/etc/hosts", o->mnt),
-               "127.0.0.1\tlocalhost\n"
-               "127.0.1.1\t%s\n",
+    write_file(P("%s/etc/hosts", o->mnt), "127.0.0.1\tlocalhost\n"
+                                          "127.0.1.1\t%s\n",
                o->hostname);
 
     free(root_uuid);
     free(esp_uuid);
 }
 
-// equivalent to:
-//
 /* chroot build/mnt env DEBIAN_FRONTEND=noninteractive apt-get install -y \
    --no-install-recommends linux-image-virtual initramfs-tools grub-efi-amd64 \
    systemd systemd-sysv init udev dbus netplan.io iproute2 ca-certificates \
@@ -408,7 +372,6 @@ static void apt_install(const struct build_opts *o)
     if (extra)
         for (char *t = strtok(extra, ","); t != NULL; t = strtok(NULL, ","))
         {
-            /* Never install a silently shortened package list. */
             if (n >= NELEMS(argv) - 1)
                 die("too many packages (limit is %zu)", NELEMS(argv) - 1);
             argv[n++] = t;
@@ -419,32 +382,23 @@ static void apt_install(const struct build_opts *o)
     free(extra);
 }
 
-// writes build/metadata/packages-before.txt and build/metadata/packages-after.txt
-// build/mnt gets a kernel, GRUB installed, serial console enabled, SSH key placed
+// writes build/metadata/packages-before.txt and build/metadata/packages-after.txt,
+// build/mnt gets a kernel, GRUB installed, serial console enabled
 static void install_system(const struct build_opts *o)
 {
     step("installing kernel, bootloader and init");
 
-    run_ok("chroot", o->mnt, "env", "DEBIAN_FRONTEND=noninteractive",
-           "apt-get", "update", NULL);
+    run_ok("chroot", o->mnt, "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update", NULL);
 
-    /* Snapshot before, so the conversion delta is attributable per package. */
-    char *before = run_capture("chroot", o->mnt, "dpkg-query", "-W",
-                               "-f=${Package}\t${Version}\n", NULL);
+    char *before = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Package}\t${Version}\n", NULL);
     write_file(P("%s/metadata/packages-before.txt", o->outdir), "%s\n", before);
     free(before);
 
     apt_install(o);
 
-    /*
-     * Both files below are conffiles of packages installed just above, so
-     * they are written after the install rather than before it — the
-     * directories do not exist in a container rootfs.
-     */
     write_file(P("%s/etc/initramfs-tools/modules", o->mnt), "%s", VIRTIO_MODULES);
     run_ok("chroot", o->mnt, "update-initramfs", "-u", "-k", "all", NULL);
 
-    /* Serial console on GRUB and on the kernel cmdline; the last one wins. */
     write_file(P("%s/etc/default/grub", o->mnt),
                "GRUB_TIMEOUT=5\n"
                "GRUB_TERMINAL=\"console serial\"\n"
@@ -452,22 +406,16 @@ static void install_system(const struct build_opts *o)
                "GRUB_CMDLINE_LINUX_DEFAULT=\"\"\n"
                "GRUB_CMDLINE_LINUX=\"console=tty0 console=ttyS0,115200n8\"\n");
 
-    /* --removable writes the UEFI fallback path; --no-nvram avoids the host. */
-    run_ok("chroot", o->mnt, "grub-install", "--removable", "--no-nvram",
-           "--target=x86_64-efi", "--efi-directory=/boot/efi",
-           "--boot-directory=/boot", NULL);
+    run_ok("chroot", o->mnt, "grub-install", "--removable", "--no-nvram", "--target=x86_64-efi", "--efi-directory=/boot/efi", "--boot-directory=/boot", NULL);
     run_ok("chroot", o->mnt, "update-grub", NULL);
 
-    /* Point the fallback binary's prefix at the real config on the root fs. */
     run_ok("mkdir", "-p", P("%s/boot/efi/boot/grub", o->mnt), NULL);
-    write_file(P("%s/boot/efi/boot/grub/grub.cfg", o->mnt),
-               "set prefix=($root)/boot/grub\n"
-               "configfile $prefix/grub.cfg\n");
+    write_file(P("%s/boot/efi/boot/grub/grub.cfg", o->mnt), "set prefix=($root)/boot/grub\n"
+                                                            "configfile $prefix/grub.cfg\n");
 
     run_ok("chroot", o->mnt, "systemctl", "enable", "serial-getty@ttyS0.service", NULL);
 
-    char *after = run_capture("chroot", o->mnt, "dpkg-query", "-W",
-                              "-f=${Package}\t${Version}\n", NULL);
+    char *after = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Package}\t${Version}\n", NULL);
     write_file(P("%s/metadata/packages-after.txt", o->outdir), "%s\n", after);
     free(after);
 
@@ -509,16 +457,10 @@ static char *read_source_digest(const struct build_opts *o)
     const char *path = P("%s/metadata/source.json", o->outdir);
     char *json = read_file(path, 8192);
 
-    /* Small enough not to justify a JSON parser: one known key, one string. */
-    char *key = strstr(json, "\"source_digest\"");
-    char *val = key ? strchr(key + strlen("\"source_digest\""), '"') : NULL;
-    char *end = val ? strchr(val + 1, '"') : NULL;
-    if (!end)
-        die("%s does not contain a source_digest", path);
-
-    *end = '\0';
-    char *digest = strdup(val + 1);
+    char *digest = json_get(json, "source_digest");
     free(json);
+    if (!digest)
+        die("%s does not contain a source_digest", path);
     return digest;
 }
 
@@ -532,9 +474,6 @@ static void ssh_key_block(const struct build_opts *o, char *out, size_t cap)
     char *keys = read_file(o->ssh_key, 8192);
     size_t w = 0;
 
-    /* One list item per line: an authorized_keys file with two keys in it
-       is one YAML scalar with a newline in it, which cloud-init rejects —
-       and it rejects the whole user-data along with it. */
     for (char *l = strtok(keys, "\r\n"); l; l = strtok(NULL, "\r\n"))
     {
         while (*l == ' ' || *l == '\t')
@@ -542,8 +481,6 @@ static void ssh_key_block(const struct build_opts *o, char *out, size_t cap)
         if (*l == '\0' || *l == '#')
             continue;
 
-        /* Quoted, because a key comment may contain '#'. Which means the
-           two characters that would end the quote have to go. */
         if (strchr(l, '"') || strchr(l, '\\'))
             die("--ssh-key: %s contains a quote or backslash", o->ssh_key);
 
@@ -562,12 +499,6 @@ static void ssh_key_block(const struct build_opts *o, char *out, size_t cap)
     free(keys);
 }
 
-/*
- * Anything cloned from this disk must not inherit an identity. systemd
- * regenerates the machine ID from an empty file on first boot, and
- * cloud-init writes fresh host keys; leaving either in place gives every VM
- * built from this image one identity and one host key.
- */
 static void reset_identity(const struct build_opts *o)
 {
     run_ok("truncate", "-s", "0", P("%s/etc/machine-id", o->mnt), NULL);
@@ -575,19 +506,12 @@ static void reset_identity(const struct build_opts *o)
     run_ok("find", P("%s/etc/ssh", o->mnt), "-name", "ssh_host_*", "-delete", NULL);
 }
 
-/*
- * Nothing but the seed is reachable from a local VM. Without the datasource
- * pin cloud-init opens every boot by probing EC2, Azure and GCE metadata
- * endpoints that will never answer.
- */
 static void enable_cloud_init(const struct build_opts *o)
 {
     run_ok("mkdir", "-p", P("%s/etc/cloud/cloud.cfg.d", o->mnt), NULL);
-    write_file(P("%s/etc/cloud/cloud.cfg.d/99-c2vm.cfg", o->mnt),
-               "datasource_list: [ NoCloud, None ]\n");
+    write_file(P("%s/etc/cloud/cloud.cfg.d/99-c2vm.cfg", o->mnt), "datasource_list: [ NoCloud, None ]\n");
 
-    /* The package preset normally enables these. Be explicit: a disk that
-       silently ships a disabled cloud-init boots with no user and no network. */
+    /* The package preset normally enables these. */
     static const char *CI_UNITS[] = {
         "cloud-init-local.service",
         "cloud-init.service",
@@ -706,14 +630,10 @@ static void write_metadata(const struct build_opts *o)
     step("recording build metadata");
 
     char *digest = read_source_digest(o);
-    char *kver = run_capture("chroot", o->mnt, "dpkg-query", "-W",
-                             "-f=${Version}", o->kernel, NULL);
-    char *gver = run_capture("chroot", o->mnt, "dpkg-query", "-W",
-                             "-f=${Version}", "grub-efi-amd64", NULL);
+    char *kver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", o->kernel, NULL);
+    char *gver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", "grub-efi-amd64", NULL);
     char *host = run_capture("uname", "-srm", NULL);
 
-    /* Same guard one step later: source.json is on disk between the two, and
-       this is the last point before the value reaches the predicate. */
     if (!dry_run && strncmp(digest, "sha256:", 7) != 0)
         die("%s/metadata/source.json holds no digest: %.60s",
             o->outdir, digest);
@@ -787,7 +707,7 @@ static void convert_formats(const struct build_opts *o)
         ova_write(o->outdir, o->hostname);
 }
 
-/* ----------------------------------------------------------------- entry */
+#pragma endregion STAGES
 
 int cmd_build(int argc, char *argv[])
 {

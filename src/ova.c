@@ -28,7 +28,6 @@ static unsigned long long file_size(const char *path)
     return (unsigned long long)st.st_size;
 }
 
-/* sha256sum prints "<hex>  <path>"; the manifest wants only the hex. */
 static char *sha256_of(const char *path)
 {
     char *out = run_capture("sha256sum", path, NULL);
@@ -38,7 +37,7 @@ static char *sha256_of(const char *path)
     return out;
 }
 
-/* The VM name is the one caller-controlled string in the descriptor. */
+// xml escapes
 static const char *X(const char *s)
 {
     static char buf[512];
@@ -204,10 +203,7 @@ static void write_manifest(const char *outdir)
     free(vmdk_hash);
 }
 
-/*
- * --format=ustar because DSP0243 requires it. GNU tar defaults to its own
- * format, which VirtualBox happens to accept and a strict importer need not.
- */
+// --format=ustar because DSP0243 requires it
 static void write_tar(const char *outdir)
 {
     step("packing OVA");
@@ -215,8 +211,6 @@ static void write_tar(const char *outdir)
            "disk.ovf", "disk.mf", "disk.vmdk", NULL);
 }
 
-/* All three are now inside the archive, and the vmdk is the size of the disk.
-   `tar xf disk.ova` gets them back. */
 static void discard_members(const char *outdir)
 {
     run_ok("rm", "-f", P("%s/disk.vmdk", outdir), P("%s/disk.ovf", outdir),

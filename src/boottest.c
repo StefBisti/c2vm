@@ -49,7 +49,6 @@ static bool has_suffix(const char *s, const char *suffix)
     return n >= m && !strcmp(s + n - m, suffix);
 }
 
-/* qemu wants to be told, and guessing from content would need a probe. */
 static const char *disk_format(const char *path)
 {
     const char *dot = strrchr(path, '.');
@@ -78,35 +77,20 @@ static const char *unpack_ova(const struct test_opts *t)
 
     const char *dir = P("%s/boot-test", t->outdir);
     run_ok("mkdir", "-p", dir, NULL);
-    /* c2vm packs exactly this member. A third-party OVA names its disk
-       whatever its OVF References section says, which is not read here. */
     if (run("tar", "-xf", t->artifact, "-C", dir, "disk.vmdk", NULL) != 0)
-        die("%s has no disk.vmdk member; boot-test reads OVAs c2vm built",
-            t->artifact);
+        die("%s has no disk.vmdk member; boot-test reads OVAs c2vm built", t->artifact);
 
-    /*
-     * streamOptimized is compressed and append-only: qemu reads it but
-     * cannot write to it, and a guest whose root filesystem is read-only
-     * never gets through cloud-init. Boot a qcow2 overlay so writes land
-     * beside the disk while every read still comes from the VMDK.
-     */
     const char *overlay = P("%s/overlay.qcow2", dir);
     run_ok("rm", "-f", overlay, NULL);
-    run_ok("qemu-img", "create", "-f", "qcow2",
-           "-b", "disk.vmdk", "-F", "vmdk", overlay, NULL);
+    run_ok("qemu-img", "create", "-f", "qcow2", "-b", "disk.vmdk", "-F", "vmdk", overlay, NULL);
 
     return P("%s/overlay.qcow2", dir);
 }
 
-static pid_t spawn_qemu(const struct test_opts *t, const char *disk,
-                        const char *logpath)
+static pid_t spawn_qemu(const struct test_opts *t, const char *disk, const char *logpath)
 {
     const char *vars = P("%s/boot-test-VARS.fd", t->outdir);
     run_ok("cp", OVMF_VARS, vars, NULL);
-
-    /* qemu truncates the file itself, but not before the first poll can read
-       it. A log left by the previous run would otherwise satisfy the serial
-       half of the test before this boot has written a byte. */
     run_ok("rm", "-f", logpath, NULL);
 
     char *argv[40];
@@ -261,8 +245,7 @@ static void print_tail(const char *logpath, int lines)
 {
     if (access(logpath, R_OK) != 0)
     {
-        fprintf(stderr, "\n--- no serial output: %s was never written ---\n",
-                logpath);
+        fprintf(stderr, "\n--- no serial output: %s was never written ---\n", logpath);
         return;
     }
 
@@ -271,11 +254,9 @@ static void print_tail(const char *logpath, int lines)
     fputs("--- end ---\n", stderr);
 }
 
-static void wait_for_boot(const struct test_opts *t, pid_t qemu,
-                          const char *logpath)
+static void wait_for_boot(const struct test_opts *t, pid_t qemu, const char *logpath)
 {
-    step("waiting for the guest (timeout %ds, %s)", t->timeout,
-         t->kvm ? "kvm" : "tcg");
+    step("waiting for the guest (timeout %ds, %s)", t->timeout, t->kvm ? "kvm" : "tcg");
 
     time_t deadline = time(NULL) + t->timeout;
     bool saw_login = false;
@@ -312,8 +293,7 @@ static void wait_for_boot(const struct test_opts *t, pid_t qemu,
     }
 
     print_tail(logpath, 50);
-    fprintf(stderr, "c2vm: timed out after %ds (serial login: %s)\n",
-            t->timeout, saw_login ? "yes" : "no");
+    fprintf(stderr, "c2vm: timed out after %ds (serial login: %s)\n",  t->timeout, saw_login ? "yes" : "no");
     exit(EXIT_BOOT_TIMEOUT);
 }
 
@@ -333,19 +313,11 @@ static void assert_guest(const struct test_opts *t)
     char *want_kver = json_get_in(t->meta, "kernel", "version");
 
     if (!want_uuid || !kernel_pkg || !want_kver)
-        die("%s/metadata/build.json is missing fields boot-test needs; "
-            "rebuild with this version of c2vm",
-            t->outdir);
+        die("%s/metadata/build.json is missing fields boot-test needs; rebuild with this version of c2vm", t->outdir);
 
-    /* degraded is accepted: a converted container legitimately carries units
-       that have nothing to do on a VM and fail. */
-    /* ssh.socket accepts a connection while the system is still starting, so
-       the first probe can arrive mid cloud-init. --wait blocks until startup
-       finishes; the outer timeout keeps a hung unit from stalling the test. */
-    char *state = ssh_out(t, "timeout 60 systemctl is-system-running --wait "
-                             "|| true");
-    check("systemd state", !strcmp(state, "running") || !strcmp(state, "degraded"),
-          state);
+
+    char *state = ssh_out(t, "timeout 60 systemctl is-system-running --wait || true");
+    check("systemd state", !strcmp(state, "running") || !strcmp(state, "degraded"), state);
 
     char *uuid = ssh_out(t, "findmnt -no UUID /");
     check("root fs uuid", want_uuid && !strcmp(uuid, want_uuid), uuid);
@@ -353,8 +325,7 @@ static void assert_guest(const struct test_opts *t)
     char *addr = ssh_out(t, "ip -4 -o addr show scope global | awk '{print $4}'");
     check("network address", addr[0] != '\0', addr[0] ? addr : "(none)");
 
-    char *kver = ssh_out(t, P("dpkg-query -W -f='${Version}' %s",
-                              kernel_pkg ? kernel_pkg : "linux-image-virtual"));
+    char *kver = ssh_out(t, P("dpkg-query -W -f='${Version}' %s", kernel_pkg ? kernel_pkg : "linux-image-virtual"));
     check("kernel package", want_kver && !strcmp(kver, want_kver), kver);
 
     char *uname = ssh_out(t, "uname -r");
@@ -438,8 +409,6 @@ static int parse_opts(int argc, char *argv[], struct test_opts *t)
         return EXIT_USAGE;
     }
 
-    /* Tripled later for TCG, so the cap leaves room for that without
-       overflowing into a deadline in the past. */
     if (t->timeout <= 0 || t->timeout > 86400)
     {
         fprintf(stderr, "c2vm boot-test: --timeout must be 1..86400\n");
@@ -471,8 +440,6 @@ int cmd_boot_test(int argc, char *argv[])
     if (rc != 0)
         return rc;
 
-    /* A CI runner without nested virtualisation still has to be able to run
-       this, and TCG is roughly an order of magnitude slower. */
     t.kvm = access("/dev/kvm", R_OK | W_OK) == 0;
     if (!t.kvm)
     {
@@ -485,9 +452,6 @@ int cmd_boot_test(int argc, char *argv[])
 
     t.meta = read_file(P("%s/metadata/build.json", t.outdir), 65536);
 
-    /* Which account exists in the guest is a build decision, not a test
-       parameter. Read it back rather than guessing, the same way every
-       assertion below does. */
     if (!t.user)
     {
         t.user = json_get_in(t.meta, "flags", "user");
@@ -501,8 +465,7 @@ int cmd_boot_test(int argc, char *argv[])
     /* Both outlive dozens of further P() calls — every ssh attempt makes one
        — so they get real storage rather than a slot in the rotating pool. */
     char disk[PATH_MAX];
-    snprintf(disk, sizeof disk, "%s",
-             has_suffix(t.artifact, ".ova") ? unpack_ova(&t) : t.artifact);
+    snprintf(disk, sizeof disk, "%s", has_suffix(t.artifact, ".ova") ? unpack_ova(&t) : t.artifact);
 
     char logpath[PATH_MAX];
     snprintf(logpath, sizeof logpath, "%s/boot-test.log", t.outdir);
@@ -516,7 +479,6 @@ int cmd_boot_test(int argc, char *argv[])
     step("boot test passed");
     fprintf(stderr, "  serial log: %s\n", logpath);
 
-    /* cleanup_run() kills qemu; atexit would too, but say so explicitly. */
     cleanup_run();
     return EXIT_SUCCESS;
 }

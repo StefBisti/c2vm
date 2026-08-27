@@ -6,8 +6,7 @@
 
 extern bool dry_run;
 
-/* All take a NULL-terminated argument list: run("parted", "-s", disk, NULL) */
-
+/* these take a NULL-terminated argument list: run("parted", "-s", disk, NULL) */
 int run(const char *prog, ...);           /* returns exit status */
 void run_ok(const char *prog, ...);       /* dies if the command fails */
 char *run_capture(const char *prog, ...); /* trimmed stdout, caller frees */
