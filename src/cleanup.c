@@ -13,6 +13,7 @@
 enum action_kind
 {
     ACT_UMOUNT,
+    ACT_GUESTUNMOUNT,
     ACT_LOSETUP,
     ACT_KILL
 };
@@ -43,6 +44,10 @@ static struct action *push(enum action_kind kind, const char *path)
 
 void cleanup_push_umount(const char *path) { push(ACT_UMOUNT, path); }
 void cleanup_push_losetup(const char *dev) { push(ACT_LOSETUP, dev); }
+
+/* guestmount is FUSE: umount(8) is the wrong tool and the FUSE process
+   outlives the request, so this needs its own action. */
+void cleanup_push_guestunmount(const char *path) { push(ACT_GUESTUNMOUNT, path); }
 
 /* A boot test that dies mid-run must not leave a VM holding the disk. */
 void cleanup_push_kill(pid_t pid, const char *what) { push(ACT_KILL, what)->pid = pid; }
@@ -82,6 +87,27 @@ void cleanup_run(void)
         case ACT_UMOUNT:
             if (run("umount", "-R", a->path, NULL) != 0)
                 run("umount", "-R", "-l", a->path, NULL);
+            break;
+        case ACT_GUESTUNMOUNT:
+            /*
+             * --retry rides out the window where the kernel still has the
+             * FUSE mount busy. guestunmount can also return before the
+             * process has actually gone, so confirm rather than assume:
+             * a lingering appliance keeps the disk image open and the next
+             * scan then reads a file another process still holds.
+             */
+            run("guestunmount", "--retry=5", a->path, NULL);
+            for (int i = 0; i < 20; i++)
+            {
+                if (run("findmnt", "-rn", a->path, NULL) != 0)
+                    break; /* findmnt fails => nothing mounted there */
+                usleep(250000);
+            }
+            if (run("findmnt", "-rn", a->path, NULL) == 0)
+                fprintf(stderr,
+                        "c2vm: warning: %s is still mounted; "
+                        "run: guestunmount %s\n",
+                        a->path, a->path);
             break;
         case ACT_LOSETUP:
             run("udevadm", "settle", NULL);

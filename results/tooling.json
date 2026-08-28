@@ -1,0 +1,18 @@
+{
+  "scanned_at": "2026-08-28T06:19:34Z",
+  "c2vm_version": "0.0.1-dev",
+  "syft": {
+    "path": "/home/stefan/.local/bin/syft",
+    "version": "1.51.1",
+    "spdx_schema": "16.1.10"
+  },
+  "artifact": {
+    "name": "disk.qcow2",
+    "sha256": "c597c7383ebda8e28ebb57f36d88a6f7f42ef4ec0e9ad3c6175a73bffd314d90",
+    "verified": true
+  },
+  "source": {
+    "image": "ubuntu:24.04",
+    "digest": "sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517"
+  }
+}
