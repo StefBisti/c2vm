@@ -4,6 +4,7 @@
 #include "./src/boottest.h"
 #include "./src/build.h"
 #include "./src/scan.h"
+#include "./src/diff.h"
 
 #define EXIT_RUNTIME_FAILURE_ERROR 1
 #define EXIT_USAGE_ERROR 2
@@ -11,7 +12,6 @@
 
 typedef int (*handler_fn)(int argc, char *argv[]);
 
-static int cmd_diff(int argc, char *argv[]);
 static int cmd_push(int argc, char *argv[]);
 static int cmd_sign(int argc, char *argv[]);
 static int cmd_attest(int argc, char *argv[]);
@@ -84,12 +84,6 @@ static int not_implemented(const char *name)
     return EXIT_NOT_IMPLEMENTED_ERROR;
 }
 
-static int cmd_diff(int argc, char *argv[])
-{
-    (void)argc;
-    (void)argv;
-    return not_implemented("diff");
-}
 static int cmd_push(int argc, char *argv[])
 {
     (void)argc;
