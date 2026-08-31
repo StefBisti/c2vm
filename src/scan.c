@@ -49,14 +49,6 @@ static const char *basename_of(const char *path)
     return slash ? slash + 1 : path;
 }
 
-/*
- * scan runs as root for guestmount, and root's PATH does not include the
- * ~/.local/bin that syft's installer writes to. Look where sudo came from
- * before giving up, so the common case needs no --syft.
- *
- * The result outlives dozens of further P() calls — json_get() makes one per
- * lookup — so it gets storage of its own rather than a slot in the pool.
- */
 static const char *find_syft(const struct scan_opts *s)
 {
     static char found[PATH_MAX];
@@ -94,11 +86,7 @@ static const char *find_syft(const struct scan_opts *s)
     return NULL; /* unreachable */
 }
 
-/*
- * "ubuntu:24.04" -> "ubuntu", so the digest can be appended. The tag is the
- * last colon *after* the last slash: a registry may carry a port, and
- * localhost:5000/img:tag must not lose its port.
- */
+// Turns ubuntu:24.04 into ubuntu, so the digest can be appended
 static const char *repo_of(const char *image)
 {
     static char buf[512];
@@ -109,7 +97,6 @@ static const char *repo_of(const char *image)
     if (colon)
         *colon = '\0';
 
-    /* Already digest-pinned: strip that too, the caller re-appends one. */
     char *at = strrchr(buf, '@');
     if (at)
         *at = '\0';
@@ -117,14 +104,10 @@ static const char *repo_of(const char *image)
     return buf;
 }
 
-/*
- * Both SBOM formats come out of a single syft invocation, so they cannot
- * describe different scans. --source-name/--source-version put the artifact
- * hash inside the document, which is what Phase 3.4 attests to, and they
- * silence syft's warning about an unnamed directory source.
- */
-static void syft_scan(const struct scan_opts *s, const char *syft,
-                      const char *target, const char *name, const char *version)
+// Builds: syft <target> --source-name <name> --source-version <hash>
+//  -o spdx-json=results/sbom-<name>.spdx.json
+//  -o cyclonedx-json=results/sbom-<name>.cdx.json
+static void syft_scan(const struct scan_opts *s, const char *syft, const char *target, const char *name, const char *version)
 {
     step("syft %s", target);
 
@@ -153,9 +136,11 @@ static char *verify_artifact(const struct scan_opts *s)
 
     char *want = json_get_in(s->meta, name, "sha256");
     if (!want)
+    {
         die("%s/metadata/build.json records no artifact called '%s'; "
             "rebuild with a version of c2vm that writes artifacts[]",
             s->outdir, name);
+    }
 
     if (s->no_verify)
         return want;
@@ -168,11 +153,13 @@ static char *verify_artifact(const struct scan_opts *s)
         *sp = '\0';
 
     if (strcmp(sum, want) != 0)
+    {
         die("%s does not match build.json\n"
             "  recorded: %s\n"
             "  actual:   %s\n"
             "The disk changed after it was built; rebuild before scanning.",
             s->artifact, want, sum);
+    }
 
     fprintf(stderr, "  sha256 ok: %s\n", want);
     free(sum);
@@ -295,8 +282,6 @@ static int parse_opts(int argc, char *argv[], struct scan_opts *s)
         return EXIT_USAGE;
     }
 
-    /* guestmount reads disk images, not archives. Say so plainly rather
-       than letting libguestfs fail with an appliance error. */
     const char *dot = strrchr(basename_of(s->artifact), '.');
     if (dot && !strcmp(dot, ".ova"))
     {
@@ -311,80 +296,65 @@ static int parse_opts(int argc, char *argv[], struct scan_opts *s)
 
 int cmd_scan(int argc, char *argv[])
 {
-    struct scan_opts s;
-    int rc = parse_opts(argc, argv, &s);
+    struct scan_opts opts;
+    int rc = parse_opts(argc, argv, &opts);
     if (rc != 0)
         return rc;
 
-    /* guestmount needs root, and so does reading the mount it creates. */
     if (geteuid() != 0)
         die("scan must run as root (guestmount)");
 
     cleanup_init();
 
-    const char *syft = find_syft(&s);
-    s.meta = read_file(P("%s/metadata/build.json", s.outdir), 65536);
+    const char *syft = find_syft(&opts);
+    opts.meta = read_file(P("%s/metadata/build.json", opts.outdir), 65536);
 
-    char *image = json_get_in(s.meta, "source", "image");
-    char *digest = json_get_in(s.meta, "source", "digest");
+    char *image = json_get_in(opts.meta, "source", "image");
+    char *digest = json_get_in(opts.meta, "source", "digest");
     if (!image || !digest)
-        die("%s/metadata/build.json records no source image", s.outdir);
+        die("%s/metadata/build.json records no source image", opts.outdir);
 
-    char *artifact_sha = verify_artifact(&s);
+    char *artifact_sha = verify_artifact(&opts);
 
-    run_ok("mkdir", "-p", s.results, NULL);
+    run_ok("mkdir", "-p", opts.results, NULL);
 
-    /* Recorded so Stage 3.2 can prove both SBOMs came from one syft. */
     char *ver_json = run_capture(syft, "version", "-o", "json", NULL);
     char *syft_ver = json_get(ver_json, "version");
     char *syft_schema = json_get(ver_json, "schemaVersion");
     if (!syft_ver)
         die("cannot read a version out of `%s version -o json`", syft);
-    fprintf(stderr, "  syft:     %s (spdx schema %s)\n",
-            syft_ver, syft_schema ? syft_schema : "?");
+    fprintf(stderr, "  syft:     %s (spdx schema %s)\n", syft_ver, syft_schema ? syft_schema : "?");
 
-    /*
-     * Pinned by digest, never by tag. `ubuntu:24.04` resolves to a different
-     * image next month, and a source SBOM that does not describe the image
-     * this disk was actually built from breaks the whole chain.
-     */
-    if (!s.skip_source)
+    if (!opts.skip_source)
     {
-        const char *ref = s.source
-                              ? s.source
-                              : P("registry:%s@%s", repo_of(image), digest);
-        syft_scan(&s, syft, ref, "source", digest);
+        const char *ref = opts.source ? opts.source : P("registry:%s@%s", repo_of(image), digest);
+        syft_scan(&opts, syft, ref, "source", digest);
     }
 
-    /* guestmount rather than a loop device: it reads qcow2 directly and
-       needs no nbd module. The loop path stays available for disk.raw.
-       Real storage, not P(): syft_scan() makes further P() calls. */
     char mnt[PATH_MAX];
-    snprintf(mnt, sizeof mnt, "%s/scanmnt", s.outdir);
+    snprintf(mnt, sizeof mnt, "%s/scanmnt", opts.outdir);
     run_ok("mkdir", "-p", mnt, NULL);
 
-    step("mounting %s read-only", s.artifact);
-    run_ok("guestmount", "-a", s.artifact, "-i", "--ro", mnt, NULL);
+    step("mounting %s read-only", opts.artifact);
+    run_ok("guestmount", "-a", opts.artifact, "-i", "--ro", mnt, NULL);
     cleanup_push_guestunmount(mnt);
 
-    syft_scan(&s, syft, P("dir:%s", mnt), "disk", artifact_sha);
+    syft_scan(&opts, syft, P("dir:%s", mnt), "disk", artifact_sha);
 
-    /* Unmount before writing metadata, so a failure to release the disk is
-       reported as an error rather than hidden behind a successful exit. */
+    /* Unmount before writing metadata, so a failure to release the disk is reported as an error */
     cleanup_run();
 
-    write_tooling(&s, syft, syft_ver, syft_schema ? syft_schema : "",
-                  image, digest, artifact_sha);
+    write_tooling(&opts, syft, syft_ver, syft_schema ? syft_schema : "", image, digest, artifact_sha);
 
     step("done");
-    if (!s.skip_source)
+    if (!opts.skip_source)
     {
-        fprintf(stderr, "  %s/sbom-source.spdx.json\n", s.results);
-        fprintf(stderr, "  %s/sbom-source.cdx.json\n", s.results);
+        fprintf(stderr, "  %s/sbom-source.spdx.json\n", opts.results);
+        fprintf(stderr, "  %s/sbom-source.cdx.json\n", opts.results);
     }
-    fprintf(stderr, "  %s/sbom-disk.spdx.json\n", s.results);
-    fprintf(stderr, "  %s/sbom-disk.cdx.json\n", s.results);
-    fprintf(stderr, "  %s/tooling.json\n", s.results);
+    fprintf(stderr, "  %s/sbom-disk.spdx.json\n", opts.results);
+    fprintf(stderr, "  %s/sbom-disk.cdx.json\n", opts.results);
+    fprintf(stderr, "  %s/tooling.json\n", opts.results);
 
     free(image);
     free(digest);
@@ -392,7 +362,7 @@ int cmd_scan(int argc, char *argv[])
     free(ver_json);
     free(syft_ver);
     free(syft_schema);
-    free(s.meta);
+    free(opts.meta);
 
     return EXIT_SUCCESS;
 }

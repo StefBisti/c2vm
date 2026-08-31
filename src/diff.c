@@ -24,11 +24,7 @@ struct diff_opts
     const char *results;
 };
 
-/*
- * A wall of package names explains nothing. These buckets answer the question
- * the measurement is actually asking: what did the conversion have to add to
- * make a filesystem bootable?
- */
+
 static const struct
 {
     const char *group;
@@ -37,8 +33,7 @@ static const struct
     {"kernel", {"linux-", "initramfs", "kmod", "firmware", NULL}},
     {"bootloader", {"grub", "efibootmgr", "shim", "mokutil", "os-prober", NULL}},
     {"init", {"systemd", "init", "udev", "dbus", "libnss-systemd", NULL}},
-    {"networking", {"netplan", "iproute2", "isc-dhcp", "ifupdown", "openssh",
-                    "resolvconf"}},
+    {"networking", {"netplan", "iproute2", "isc-dhcp", "ifupdown", "openssh", "resolvconf"}},
     {"cloud-init", {"cloud-init", "python3-", "cloud-guest", NULL}},
 };
 
@@ -344,8 +339,7 @@ int cmd_diff(int argc, char *argv[])
 
     size_t noa = 0, nob = 0, nunch = 0;
 
-    /* Identical (name, version, ecosystem) on both sides is unchanged; the
-       rest fall out as one-sided and are re-examined for version changes. */
+    // Identical (name, version, ecosystem) on both sides is unchanged
     for (size_t i = 0, j = 0; i < na || j < nb;)
     {
         if (i == na)
@@ -368,8 +362,7 @@ int cmd_diff(int argc, char *argv[])
         }
     }
 
-    /* A name present on both sides with a different version is a change,
-       not a removal plus an unrelated addition. */
+    // A name present on both sides with a different version is a change
     struct pkg *added = malloc((nob + 1) * sizeof *added);
     struct pkg *removed = malloc((noa + 1) * sizeof *removed);
     struct change *changed = malloc((noa + nob + 1) * sizeof *changed);
@@ -405,10 +398,8 @@ int cmd_diff(int argc, char *argv[])
 
     run_ok("mkdir", "-p", o.results, NULL);
 
-    write_json(&o, added, nadd, removed, nrem, changed, nchg,
-               nunch, na, nb, ecos, neco, a, b);
-    write_markdown(&o, added, nadd, removed, nrem, changed, nchg,
-                   nunch, na, nb, ecos, neco, a, b);
+    write_json(&o, added, nadd, removed, nrem, changed, nchg, nunch, na, nb, ecos, neco, a, b);
+    write_markdown(&o, added, nadd, removed, nrem, changed, nchg, nunch, na, nb, ecos, neco, a, b);
 
     fprintf(stderr, "\n  added:     %zu\n", nadd);
     fprintf(stderr, "  removed:   %zu\n", nrem);

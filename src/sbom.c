@@ -9,15 +9,6 @@
 #include <string.h>
 #include <sys/stat.h>
 
-/*
- * An SPDX-specific extractor rather than a general JSON parser.
- *
- * Three fields are needed out of a document whose shape is fixed by the
- * SPDX schema, so this walks .packages[] by brace depth and reuses json_get
- * inside each element. A real parser is still owed to Stage 3.5, where
- * in-toto predicates are nested and this approach stops working.
- */
-
 static size_t dedupe(struct pkg *p, size_t n);
 
 /* Whole file, sized by stat: these run to 8 MB and read_file() wants a cap. */
@@ -33,8 +24,7 @@ static char *slurp(const char *path, size_t *len)
 
     char *buf = malloc((size_t)st.st_size + 1);
     if (!buf)
-        die("out of memory reading %s (%lld bytes)", path,
-            (long long)st.st_size);
+        die("out of memory reading %s (%lld bytes)", path, (long long)st.st_size);
 
     size_t got = fread(buf, 1, (size_t)st.st_size, f);
     fclose(f);
@@ -44,11 +34,8 @@ static char *slurp(const char *path, size_t *len)
     return buf;
 }
 
-/*
- * Advance past one JSON string, given a pointer at its opening quote.
- * Needed because a brace inside a string must not move the depth counter —
- * package descriptions and CPE strings both contain them.
- */
+// A package description containing { would break the brace counter.
+// So when the walk hits a ", it skips the entire string:
 static const char *skip_string(const char *p)
 {
     p++; /* opening quote */
@@ -83,7 +70,7 @@ static void ecosystem_of(const char *elem, char *out, size_t cap)
 
     snprintf(out, cap < i + 1 ? cap : i + 1, "%s", purl);
 }
-
+// reads SPDX file and returns plain array of {name, version, ecosystem}, dups removed
 size_t sbom_load(const char *path, struct pkg **out)
 {
     size_t len = 0;
@@ -103,13 +90,9 @@ size_t sbom_load(const char *path, struct pkg **out)
     if (!pkgs)
         die("out of memory");
 
-    /*
-     * depth 0 is the array itself. An element opens at depth 0 and its
-     * matching close brings us back, so the element spans [start, p].
-     */
     int depth = 0;
     char *start = NULL;
-    bool closed = false; /* did the packages array actually end? */
+    bool closed = false; // did the packages array actually end?
 
     for (; *p; p++)
     {
@@ -175,12 +158,6 @@ size_t sbom_load(const char *path, struct pkg **out)
 
     free(doc);
 
-    /*
-     * Running off the end of the buffer instead of reaching that bracket
-     * means the file was truncated mid-document. The packages parsed so far
-     * look perfectly valid, so without this check a half-downloaded SBOM
-     * silently produces a delta against a fraction of the real contents.
-     */
     if (!closed)
         die("%s: truncated or malformed — the packages array never closes "
             "(%zu entries read before the end of the file)",
@@ -191,8 +168,7 @@ size_t sbom_load(const char *path, struct pkg **out)
 
     size_t unique = dedupe(pkgs, n);
     if (unique != n)
-        fprintf(stderr, "  %s: %zu entries, %zu after deduplication\n",
-                path, n, unique);
+        fprintf(stderr, "  %s: %zu entries, %zu after deduplication\n", path, n, unique);
 
     *out = pkgs;
     return unique;
@@ -208,13 +184,7 @@ static int cmp_pkg(const void *x, const void *y)
     return c ? c : strcmp(a->version, b->version);
 }
 
-/*
- * syft can emit one package twice when two catalogers find it: the kernel
- * image is reported by both the dpkg-db and the kernel cataloger, identical
- * but for the purl's qualifiers. Left in, it inflates the delta by one
- * against dpkg's own count, so identical (ecosystem, name, version) triples
- * collapse to one here rather than being explained away downstream.
- */
+// sort-then-squeeze
 static size_t dedupe(struct pkg *p, size_t n)
 {
     if (n < 2)

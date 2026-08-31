@@ -3,21 +3,15 @@
 
 #include <stddef.h>
 
-/*
- * One entry of an SPDX document's .packages[]. Deliberately fixed-size and
- * flat: the diff sorts these by the hundred thousand and never mutates them.
- */
+// One entry of an SPDX document's .packages[]
 struct pkg
 {
     char name[160];
     char version[96];
-    char eco[16]; /* purl type: deb, generic, pypi, maven... or "none" */
+    char eco[16];
 };
 
-/*
- * Reads an SPDX JSON document and fills *out with a malloc'd array.
- * Returns the number of packages. Dies on a malformed document.
- */
+// Reads an SPDX JSON document and fills *out with a malloc'd array, then returns the number of packages
 size_t sbom_load(const char *path, struct pkg **out);
 
 /* "deb" -> how many entries carry it. Returns 0 if the ecosystem is absent. */
