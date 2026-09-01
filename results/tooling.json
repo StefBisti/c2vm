@@ -1,10 +1,15 @@
 {
-  "scanned_at": "2026-08-28T06:19:34Z",
+  "scanned_at": "2026-09-01T13:02:24Z",
   "c2vm_version": "0.0.1-dev",
   "syft": {
     "path": "/home/stefan/.local/bin/syft",
     "version": "1.51.1",
     "spdx_schema": "16.1.10"
+  },
+  "grype": {
+    "version": "0.118.0",
+    "db_schema": "v6.1.9",
+    "db_built": "2026-09-01T06:32:09Z"
   },
   "artifact": {
     "name": "disk.qcow2",

@@ -52,7 +52,7 @@ static const char *skip_string(const char *p)
 }
 
 /* purl looks like pkg:deb/ubuntu/zlib1g@1.3 — this lifts out "deb". */
-static void ecosystem_of(const char *elem, char *out, size_t cap)
+void purl_ecosystem(const char *elem, char *out, size_t cap)
 {
     snprintf(out, cap, "none");
 
@@ -137,7 +137,7 @@ size_t sbom_load(const char *path, struct pkg **out)
                 struct pkg *e = &pkgs[n++];
                 snprintf(e->name, sizeof e->name, "%s", name);
                 snprintf(e->version, sizeof e->version, "%s", ver ? ver : "");
-                ecosystem_of(start, e->eco, sizeof e->eco);
+                purl_ecosystem(start, e->eco, sizeof e->eco);
             }
 
             free(name);

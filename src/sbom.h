@@ -15,6 +15,11 @@ struct pkg
 size_t sbom_load(const char *path, struct pkg **out);
 
 /* "deb" -> how many entries carry it. Returns 0 if the ecosystem is absent. */
+/* Finds the first "pkg:<type>/ in a JSON fragment and writes <type> to out,
+   or "none" if there is no purl. Shared with vuln.c, which reads the same
+   purls out of grype's artifact objects. */
+void purl_ecosystem(const char *elem, char *out, size_t cap);
+
 size_t sbom_count_eco(const struct pkg *p, size_t n, const char *eco);
 
 #endif

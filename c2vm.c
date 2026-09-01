@@ -5,6 +5,7 @@
 #include "./src/build.h"
 #include "./src/scan.h"
 #include "./src/diff.h"
+#include "./src/cve.h"
 
 #define EXIT_RUNTIME_FAILURE_ERROR 1
 #define EXIT_USAGE_ERROR 2
@@ -28,6 +29,7 @@ static const struct command COMMANDS[] = {
     {"boot-test", cmd_boot_test},
     {"scan", cmd_scan},
     {"diff", cmd_diff},
+    {"cve", cmd_cve},
     {"push", cmd_push},
     {"sign", cmd_sign},
     {"attest", cmd_attest},
@@ -61,6 +63,8 @@ static void usage(FILE *out)
         "  scan <artifact>       Generate an SBOM of a built disk and scan it for CVEs\n"
         "  diff <sbom-a> <sbom-b>\n"
         "                        Report the package delta between two SBOMs\n"
+        "  cve <report-a> <report-b>\n"
+        "                        Report the vulnerability delta between two grype reports\n"
         "  push <artifact> <oci-ref>\n"
         "                        Publish the artefact to an OCI registry\n"
         "  sign <oci-ref>        Sign the published artefact (keyless)\n"

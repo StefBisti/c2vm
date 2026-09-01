@@ -22,8 +22,10 @@ struct scan_opts
     const char *outdir;  /* holds metadata/build.json */
     const char *results; /* where the SBOMs land */
     const char *syft;
+    const char *grype;
     const char *source; /* overrides the reference build.json recorded */
     bool skip_source;
+    bool skip_cve;
     bool no_verify;
 
     char *meta; /* metadata/build.json, read once */
@@ -37,8 +39,10 @@ static void scan_usage(void)
         "  --out <dir>        directory holding metadata/build.json (default: build)\n"
         "  --results <dir>    where the SBOMs are written (default: results)\n"
         "  --syft <path>      syft binary (default: found on PATH)\n"
+        "  --grype <path>     grype binary (default: found on PATH)\n"
         "  --source <ref>     source image to scan (default: the digest in build.json)\n"
         "  --skip-source      scan only the disk\n"
+        "  --skip-cve         write SBOMs but do not scan for vulnerabilities\n"
         "  --no-verify        do not check the artifact against build.json's hash\n",
         stderr);
 }
@@ -49,27 +53,32 @@ static const char *basename_of(const char *path)
     return slash ? slash + 1 : path;
 }
 
-static const char *find_syft(const struct scan_opts *s)
+/*
+ * The result outlives dozens of further P() calls - json_get() makes one per
+ * lookup - so each tool gets storage of its own rather than a pool slot.
+ */
+static const char *find_tool(const char *tool, const char *override,
+                             char *found, size_t cap)
 {
-    static char found[PATH_MAX];
-
-    if (s->syft)
-        return s->syft;
+    if (override)
+        return override;
 
     static const char *DIRS[] = {
         "/usr/local/bin", "/usr/bin", "/bin", "/opt/homebrew/bin"};
 
     for (size_t i = 0; i < NELEMS(DIRS); i++)
     {
-        snprintf(found, sizeof found, "%s/syft", DIRS[i]);
+        snprintf(found, cap, "%s/%s", DIRS[i], tool);
         if (access(found, X_OK) == 0)
             return found;
     }
 
+    /* scan runs as root, and root's PATH does not include the ~/.local/bin
+       that the anchore installers write to. */
     const char *user = getenv("SUDO_USER");
     if (user)
     {
-        snprintf(found, sizeof found, "/home/%s/.local/bin/syft", user);
+        snprintf(found, cap, "/home/%s/.local/bin/%s", user, tool);
         if (access(found, X_OK) == 0)
             return found;
     }
@@ -77,13 +86,61 @@ static const char *find_syft(const struct scan_opts *s)
     const char *home = getenv("HOME");
     if (home)
     {
-        snprintf(found, sizeof found, "%s/.local/bin/syft", home);
+        snprintf(found, cap, "%s/.local/bin/%s", home, tool);
         if (access(found, X_OK) == 0)
             return found;
     }
 
-    die("cannot find syft; install it or pass --syft <path>");
+    die("cannot find %s; install it or pass --%s <path>", tool, tool);
     return NULL; /* unreachable */
+}
+
+/*
+ * scan runs under sudo, so HOME is /root and grype looks for its database
+ * in a directory only root has ever written to - which is empty, because the
+ * user downloaded the database as themselves. Point it back at the invoking
+ * user's cache, and pin it there:
+ *
+ *   auto-update off, because a scan that silently downloads a newer database
+ *   produces numbers that cannot be reproduced from the recorded db_built;
+ *   age validation off, because a deliberately pinned database is supposed
+ *   to be old and grype otherwise refuses one older than five days.
+ */
+static void grype_env(void)
+{
+    setenv("GRYPE_DB_AUTO_UPDATE", "false", 1);
+    setenv("GRYPE_DB_VALIDATE_AGE", "false", 1);
+
+    if (geteuid() != 0)
+        return;
+
+    const char *user = getenv("SUDO_USER");
+    if (!user)
+        return;
+
+    /* grype appends only the schema number, so the "db" component is ours. */
+    const char *cache = P("/home/%s/.cache/grype/db", user);
+    if (access(cache, R_OK) == 0)
+        setenv("GRYPE_DB_CACHE_DIR", cache, 1);
+}
+
+/* grype reads the SBOM syft just wrote, so the two measurements cannot
+   describe different filesystems. */
+static void grype_scan(const struct scan_opts *s, const char *grype,
+                       const char *name)
+{
+    step("grype %s", name);
+
+    char *argv[8];
+    size_t n = 0;
+
+    argv[n++] = (char *)grype;
+    argv[n++] = (char *)P("sbom:%s/sbom-%s.spdx.json", s->results, name);
+    argv[n++] = "-o";
+    argv[n++] = (char *)P("json=%s/cve-%s.json", s->results, name);
+    argv[n] = NULL;
+
+    run_argv_ok(argv);
 }
 
 // Turns ubuntu:24.04 into ubuntu, so the digest can be appended
@@ -169,6 +226,8 @@ static char *verify_artifact(const struct scan_opts *s)
 
 static void write_tooling(const struct scan_opts *s, const char *syft,
                           const char *syft_ver, const char *syft_schema,
+                          const char *grype_ver, const char *db_built,
+                          const char *db_schema,
                           const char *image, const char *digest,
                           const char *artifact_sha)
 {
@@ -187,6 +246,11 @@ static void write_tooling(const struct scan_opts *s, const char *syft,
                "    \"version\": \"%s\",\n"
                "    \"spdx_schema\": \"%s\"\n"
                "  },\n"
+               "  \"grype\": {\n"
+               "    \"version\": \"%s\",\n"
+               "    \"db_schema\": \"%s\",\n"
+               "    \"db_built\": \"%s\"\n"
+               "  },\n"
                "  \"artifact\": {\n"
                "    \"name\": \"%s\",\n"
                "    \"sha256\": \"%s\",\n"
@@ -199,6 +263,8 @@ static void write_tooling(const struct scan_opts *s, const char *syft,
                "}\n",
                J(stamp), J(C2VM_VERSION),
                J(syft), J(syft_ver), J(syft_schema),
+               J(grype_ver ? grype_ver : ""), J(db_schema ? db_schema : ""),
+               J(db_built ? db_built : ""),
                J(basename_of(s->artifact)), J(artifact_sha),
                s->no_verify ? "false" : "true",
                J(image), J(digest));
@@ -210,8 +276,10 @@ static int parse_opts(int argc, char *argv[], struct scan_opts *s)
     s->outdir = "build";
     s->results = "results";
     s->syft = NULL;
+    s->grype = NULL;
     s->source = NULL;
     s->skip_source = false;
+    s->skip_cve = false;
     s->no_verify = false;
     s->meta = NULL;
 
@@ -227,6 +295,11 @@ static int parse_opts(int argc, char *argv[], struct scan_opts *s)
         if (!strcmp(a, "--skip-source"))
         {
             s->skip_source = true;
+            continue;
+        }
+        if (!strcmp(a, "--skip-cve"))
+        {
+            s->skip_cve = true;
             continue;
         }
         if (!strcmp(a, "--no-verify"))
@@ -250,6 +323,8 @@ static int parse_opts(int argc, char *argv[], struct scan_opts *s)
                 s->results = v;
             else if (!strcmp(a, "--syft"))
                 s->syft = v;
+            else if (!strcmp(a, "--grype"))
+                s->grype = v;
             else if (!strcmp(a, "--source"))
                 s->source = v;
             else
@@ -306,7 +381,13 @@ int cmd_scan(int argc, char *argv[])
 
     cleanup_init();
 
-    const char *syft = find_syft(&opts);
+    static char syft_path[PATH_MAX], grype_path[PATH_MAX];
+    const char *syft = find_tool("syft", opts.syft, syft_path, sizeof syft_path);
+    const char *grype = opts.skip_cve
+                            ? NULL
+                            : find_tool("grype", opts.grype, grype_path,
+                                        sizeof grype_path);
+
     opts.meta = read_file(P("%s/metadata/build.json", opts.outdir), 65536);
 
     char *image = json_get_in(opts.meta, "source", "image");
@@ -325,10 +406,44 @@ int cmd_scan(int argc, char *argv[])
         die("cannot read a version out of `%s version -o json`", syft);
     fprintf(stderr, "  syft:     %s (spdx schema %s)\n", syft_ver, syft_schema ? syft_schema : "?");
 
+    /*
+     * `grype db status` rather than the report's own descriptor: the
+     * descriptor sits at the end of a file that runs to tens of megabytes,
+     * and this returns the same two fields in a few hundred bytes.
+     */
+    char *db_json = NULL, *grype_ver = NULL, *db_built = NULL, *db_schema = NULL;
+    if (grype)
+    {
+        grype_env();
+
+        char *gv = run_capture(grype, "version", "-o", "json", NULL);
+        grype_ver = json_get(gv, "version");
+        free(gv);
+
+        /* Exits non-zero when the database is missing, but still prints the
+           JSON saying so - so take the status rather than dying on it. */
+        char *dbargv[] = {(char *)grype, "db", "status", "-o", "json", NULL};
+        run_argv_capture(dbargv, &db_json);
+        db_built = json_get(db_json, "built");
+        db_schema = json_get(db_json, "schemaVersion");
+
+        if (!db_built || !*db_built)
+            die("grype has no vulnerability database.\n"
+                "Run `grype db update` as your own user, not under sudo, "
+                "then scan again.");
+
+        fprintf(stderr, "  grype:    %s (db %s, built %s)\n",
+                grype_ver ? grype_ver : "?",
+                db_schema ? db_schema : "?",
+                db_built ? db_built : "?");
+    }
+
     if (!opts.skip_source)
     {
         const char *ref = opts.source ? opts.source : P("registry:%s@%s", repo_of(image), digest);
         syft_scan(&opts, syft, ref, "source", digest);
+        if (grype)
+            grype_scan(&opts, grype, "source");
     }
 
     char mnt[PATH_MAX];
@@ -344,7 +459,14 @@ int cmd_scan(int argc, char *argv[])
     /* Unmount before writing metadata, so a failure to release the disk is reported as an error */
     cleanup_run();
 
-    write_tooling(&opts, syft, syft_ver, syft_schema ? syft_schema : "", image, digest, artifact_sha);
+    /* After the unmount: grype reads the SBOM, not the disk, so nothing here
+       needs the mount to still be up. */
+    if (grype)
+        grype_scan(&opts, grype, "disk");
+
+    write_tooling(&opts, syft, syft_ver, syft_schema ? syft_schema : "",
+                  grype_ver, db_built, db_schema,
+                  image, digest, artifact_sha);
 
     step("done");
     if (!opts.skip_source)
@@ -354,6 +476,12 @@ int cmd_scan(int argc, char *argv[])
     }
     fprintf(stderr, "  %s/sbom-disk.spdx.json\n", opts.results);
     fprintf(stderr, "  %s/sbom-disk.cdx.json\n", opts.results);
+    if (grype)
+    {
+        if (!opts.skip_source)
+            fprintf(stderr, "  %s/cve-source.json\n", opts.results);
+        fprintf(stderr, "  %s/cve-disk.json\n", opts.results);
+    }
     fprintf(stderr, "  %s/tooling.json\n", opts.results);
 
     free(image);
@@ -362,6 +490,10 @@ int cmd_scan(int argc, char *argv[])
     free(ver_json);
     free(syft_ver);
     free(syft_schema);
+    free(db_json);
+    free(grype_ver);
+    free(db_built);
+    free(db_schema);
     free(opts.meta);
 
     return EXIT_SUCCESS;
