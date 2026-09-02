@@ -24,6 +24,7 @@ metadata/*.json
 __pycache__/
 *.log
 *.o
+obj/
  
 # Keep the directories themselves
 !.gitkeep
@@ -46,4 +47,4 @@ c2vm-roadmap.md
 # Other
 /c2vm
 
-results/cve-disk.json
+results/cve-disk.jsoncompile_commands.json

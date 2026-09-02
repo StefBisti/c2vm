@@ -1,43 +1,52 @@
-CC ?= cc
-CFLAGS ?= -std=c11 -Wall -Wextra -O2
-CPPFLAGS ?= -D_GNU_SOURCE -Isrc
-IMAGE ?= ubuntu:24.04
+CC       ?= cc
+CFLAGS   ?= -std=c11 -Wall -Wextra -O2
+CPPFLAGS ?= -D_GNU_SOURCE -Isrc -MMD -MP
+LDLIBS   ?= -lcrypt
+
+IMAGE    ?= ubuntu:24.04
 ARTIFACT ?= build/disk.qcow2
+SSH_KEY  ?= $(HOME)/.ssh/id_ed25519
 
-SRCS := c2vm.c src/run.c src/cleanup.c src/build.c src/ova.c src/boottest.c src/json.c src/scan.c src/sbom.c src/diff.c src/vuln.c src/cve.c
-OBJS := $(SRCS:.c=.o)
-LDLIBS ?= -lcrypt
-
-SYFT_VERSION ?= v1.51.1
+SYFT_VERSION  ?= v1.51.1
 GRYPE_VERSION ?= v0.118.0
 
-.PHONY: all clean demo loop-check tools
+SRCS := $(wildcard src/*.c src/core/*.c src/convert/*.c src/custody/*.c)
+OBJS := $(SRCS:src/%.c=obj/%.o)
+DEPS := $(OBJS:.o=.d)
+
+.PHONY: all clean demo tools loop-check cdb
 
 all: c2vm
 
 c2vm: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-$(OBJS): src/run.h src/cleanup.h src/build.h src/ova.h src/boottest.h src/json.h src/scan.h src/sbom.h src/diff.h src/vuln.h src/cve.h
+clean:
+	rm -rf obj/ c2vm build/ output/
+	rm -f lab/*.raw lab/*.qcow2 lab/*.vmdk lab/*.ova
+	-@$(MAKE) --no-print-directory loop-check
+
+obj/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
+
+-include $(DEPS)
+
+cdb:
+	bear -- $(MAKE) -B
 
 demo: c2vm
 	./c2vm build $(IMAGE) --format qcow2
 	./c2vm scan $(ARTIFACT)
-
-clean:
-	rm -f c2vm
-	rm -rf build/ output/
-	rm -f lab/*.raw lab/*.qcow2 lab/*.vmdk lab/*.ova
-	-@$(MAKE) --no-print-directory loop-check
-
-loop-check:
-	@losetup --list --noheadings --output NAME,BACK-FILE \
-	  | awk -v d="$(CURDIR)/" \
-	    'length(d) > 1 && index($$2, d) == 1 { print "leaked: " $$1 " -> " $$2; f=1 } \
-	     END { if (f) { print "detach with: sudo losetup -d <dev>"; exit 1 } }'
 
 tools:
 	curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
 	  | sh -s -- -b $(HOME)/.local/bin $(SYFT_VERSION)
 	curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
 	  | sh -s -- -b $(HOME)/.local/bin $(GRYPE_VERSION)
+
+loop-check:
+	@losetup --list --noheadings --output NAME,BACK-FILE \
+	  | awk -v d="$(CURDIR)/" \
+	    'length(d) > 1 && index($$2, d) == 1 { print "leaked: " $$1 " -> " $$2; f=1 } \
+	     END { if (f) { print "detach with: sudo losetup -d <dev>"; exit 1 } }'

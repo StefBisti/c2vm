@@ -1,7 +1,7 @@
 {
   "a": { "path": "results/sbom-source.spdx.json", "packages": 93 },
   "b": { "path": "results/sbom-disk.spdx.json", "packages": 1244 },
-  "summary": { "added": 1152, "removed": 1, "changed": 1, "unchanged": 91 },
+  "summary": { "added": 1152, "removed": 1, "changed": 8, "unchanged": 84 },
   "by_ecosystem": {
     "deb": { "a": 92, "b": 209, "added": 117, "removed": 0 },
     "oci": { "a": 1, "b": 0, "added": 0, "removed": 1 },
@@ -16,7 +16,7 @@
     { "name": "ca-certificates", "version": "20260601~24.04.1", "ecosystem": "deb", "group": "dependency" },
     { "name": "cloud-guest-utils", "version": "0.33-1", "ecosystem": "deb", "group": "cloud-init" },
     { "name": "cloud-init", "version": "26.1-0ubuntu1~24.04.1", "ecosystem": "deb", "group": "cloud-init" },
-    { "name": "cpio", "version": "2.15+dfsg-1ubuntu2", "ecosystem": "deb", "group": "dependency" },
+    { "name": "cpio", "version": "2.15+dfsg-1ubuntu2.1", "ecosystem": "deb", "group": "dependency" },
     { "name": "dbus", "version": "1.14.10-4ubuntu4.1", "ecosystem": "deb", "group": "init" },
     { "name": "dbus-bin", "version": "1.14.10-4ubuntu4.1", "ecosystem": "deb", "group": "init" },
     { "name": "dbus-daemon", "version": "1.14.10-4ubuntu4.1", "ecosystem": "deb", "group": "init" },
@@ -26,7 +26,7 @@
     { "name": "distro-info-data", "version": "0.72-0ubuntu0.24.04.1", "ecosystem": "deb", "group": "dependency" },
     { "name": "dracut-install", "version": "060+5-1ubuntu3.3", "ecosystem": "deb", "group": "dependency" },
     { "name": "ethtool", "version": "1:6.7-1build1", "ecosystem": "deb", "group": "dependency" },
-    { "name": "fdisk", "version": "2.39.3-9ubuntu6.5", "ecosystem": "deb", "group": "dependency" },
+    { "name": "fdisk", "version": "2.39.3-9ubuntu6.6", "ecosystem": "deb", "group": "dependency" },
     { "name": "gettext-base", "version": "0.21-14ubuntu2", "ecosystem": "deb", "group": "dependency" },
     { "name": "grub-common", "version": "2.12-1ubuntu7.3", "ecosystem": "deb", "group": "bootloader" },
     { "name": "grub-efi-amd64", "version": "2.12-1ubuntu7.3", "ecosystem": "deb", "group": "bootloader" },
@@ -54,7 +54,7 @@
     { "name": "libefivar1t64", "version": "38-3.1build1", "ecosystem": "deb", "group": "dependency" },
     { "name": "libelf1t64", "version": "0.190-1.1ubuntu0.1", "ecosystem": "deb", "group": "dependency" },
     { "name": "libexpat1", "version": "2.6.1-2ubuntu0.4", "ecosystem": "deb", "group": "dependency" },
-    { "name": "libfdisk1", "version": "2.39.3-9ubuntu6.5", "ecosystem": "deb", "group": "dependency" },
+    { "name": "libfdisk1", "version": "2.39.3-9ubuntu6.6", "ecosystem": "deb", "group": "dependency" },
     { "name": "libfido2-1", "version": "1.14.0-1build3", "ecosystem": "deb", "group": "dependency" },
     { "name": "libfreetype6", "version": "2.13.2+dfsg-1ubuntu0.1", "ecosystem": "deb", "group": "dependency" },
     { "name": "libfuse3-3", "version": "3.14.0-5build1", "ecosystem": "deb", "group": "dependency" },
@@ -1141,7 +1141,7 @@
     { "name": "zfs", "version": "2.2.2-0ubuntu9.4", "ecosystem": "generic", "group": "dependency" },
     { "name": "zstd", "version": "UNKNOWN", "ecosystem": "generic", "group": "dependency" },
     { "name": "libintl", "version": "0.21", "ecosystem": "maven", "group": "dependency" },
-    { "name": "disk", "version": "c597c7383ebda8e28ebb57f36d88a6f7f42ef4ec0e9ad3c6175a73bffd314d90", "ecosystem": "none", "group": "dependency" },
+    { "name": "disk", "version": "08e245f12f2df3f598ad0b05fb5c0108f02601e17633b458f12478d8f3ca4518", "ecosystem": "none", "group": "dependency" },
     { "name": "attrs", "version": "23.2.0", "ecosystem": "pypi", "group": "dependency" },
     { "name": "blinker", "version": "1.7.0", "ecosystem": "pypi", "group": "dependency" },
     { "name": "certifi", "version": "2023.11.17", "ecosystem": "pypi", "group": "dependency" },
@@ -1168,6 +1168,13 @@
     { "name": "source", "version": "sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517", "ecosystem": "oci" }
   ],
   "changed": [
-    { "name": "libssl3t64", "ecosystem": "deb", "from": "3.0.13-0ubuntu3.12", "to": "3.0.13-0ubuntu3.15" }
+    { "name": "bsdutils", "ecosystem": "deb", "from": "1:2.39.3-9ubuntu6.5", "to": "1:2.39.3-9ubuntu6.6" },
+    { "name": "libblkid1", "ecosystem": "deb", "from": "2.39.3-9ubuntu6.5", "to": "2.39.3-9ubuntu6.6" },
+    { "name": "libmount1", "ecosystem": "deb", "from": "2.39.3-9ubuntu6.5", "to": "2.39.3-9ubuntu6.6" },
+    { "name": "libsmartcols1", "ecosystem": "deb", "from": "2.39.3-9ubuntu6.5", "to": "2.39.3-9ubuntu6.6" },
+    { "name": "libssl3t64", "ecosystem": "deb", "from": "3.0.13-0ubuntu3.12", "to": "3.0.13-0ubuntu3.15" },
+    { "name": "libuuid1", "ecosystem": "deb", "from": "2.39.3-9ubuntu6.5", "to": "2.39.3-9ubuntu6.6" },
+    { "name": "mount", "ecosystem": "deb", "from": "2.39.3-9ubuntu6.5", "to": "2.39.3-9ubuntu6.6" },
+    { "name": "util-linux", "ecosystem": "deb", "from": "2.39.3-9ubuntu6.5", "to": "2.39.3-9ubuntu6.6" }
   ]
 }

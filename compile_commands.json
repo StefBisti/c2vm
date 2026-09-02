@@ -1,0 +1,236 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/main.o",
+      "src/main.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/main.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/core/cleanup.o",
+      "src/core/cleanup.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/core/cleanup.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/core/cleanup.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/core/json.o",
+      "src/core/json.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/core/json.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/core/json.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/core/run.o",
+      "src/core/run.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/core/run.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/core/run.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/core/util.o",
+      "src/core/util.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/core/util.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/core/util.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/convert/boottest.o",
+      "src/convert/boottest.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/convert/boottest.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/convert/boottest.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/convert/build.o",
+      "src/convert/build.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/convert/build.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/convert/build.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/convert/ova.o",
+      "src/convert/ova.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/convert/ova.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/convert/ova.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/custody/cve.o",
+      "src/custody/cve.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/custody/cve.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/custody/cve.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/custody/diff.o",
+      "src/custody/diff.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/custody/diff.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/custody/diff.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/custody/sbom.o",
+      "src/custody/sbom.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/custody/sbom.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/custody/sbom.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/custody/scan.o",
+      "src/custody/scan.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/custody/scan.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/custody/scan.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/cc",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-O2",
+      "-D_GNU_SOURCE",
+      "-Isrc",
+      "-c",
+      "-o",
+      "obj/custody/vuln.o",
+      "src/custody/vuln.c"
+    ],
+    "directory": "/home/stefan/development/projects/c2vm",
+    "file": "/home/stefan/development/projects/c2vm/src/custody/vuln.c",
+    "output": "/home/stefan/development/projects/c2vm/obj/custody/vuln.o"
+  }
+]

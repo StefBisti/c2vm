@@ -7,8 +7,8 @@
 |---|---|
 | added | 1152 |
 | removed | 1 |
-| version changed | 1 |
-| unchanged | 91 |
+| version changed | 8 |
+| unchanged | 84 |
 
 ## By ecosystem
 
@@ -98,12 +98,12 @@
 - `adduser` 3.137ubuntu1
 - `busybox-initramfs` 1:1.36.1-6ubuntu3.1
 - `ca-certificates` 20260601~24.04.1
-- `cpio` 2.15+dfsg-1ubuntu2
+- `cpio` 2.15+dfsg-1ubuntu2.1
 - `dhcpcd-base` 1:10.0.6-1ubuntu3.2
 - `distro-info-data` 0.72-0ubuntu0.24.04.1
 - `dracut-install` 060+5-1ubuntu3.3
 - `ethtool` 1:6.7-1build1
-- `fdisk` 2.39.3-9ubuntu6.5
+- `fdisk` 2.39.3-9ubuntu6.6
 - `gettext-base` 0.21-14ubuntu2
 - `klibc-utils` 2.0.13-4ubuntu0.2
 - `libapparmor1` 4.0.1really4.0.1-0ubuntu0.24.04.7
@@ -121,7 +121,7 @@
 - `libefivar1t64` 38-3.1build1
 - `libelf1t64` 0.190-1.1ubuntu0.1
 - `libexpat1` 2.6.1-2ubuntu0.4
-- `libfdisk1` 2.39.3-9ubuntu6.5
+- `libfdisk1` 2.39.3-9ubuntu6.6
 - `libfido2-1` 1.14.0-1build3
 - `libfreetype6` 2.13.2+dfsg-1ubuntu0.1
 - `libfuse3-3` 3.14.0-5build1
@@ -162,7 +162,14 @@
 
 | package | from | to |
 |---|---|---|
+| `bsdutils` | 1:2.39.3-9ubuntu6.5 | 1:2.39.3-9ubuntu6.6 |
+| `libblkid1` | 2.39.3-9ubuntu6.5 | 2.39.3-9ubuntu6.6 |
+| `libmount1` | 2.39.3-9ubuntu6.5 | 2.39.3-9ubuntu6.6 |
+| `libsmartcols1` | 2.39.3-9ubuntu6.5 | 2.39.3-9ubuntu6.6 |
 | `libssl3t64` | 3.0.13-0ubuntu3.12 | 3.0.13-0ubuntu3.15 |
+| `libuuid1` | 2.39.3-9ubuntu6.5 | 2.39.3-9ubuntu6.6 |
+| `mount` | 2.39.3-9ubuntu6.5 | 2.39.3-9ubuntu6.6 |
+| `util-linux` | 2.39.3-9ubuntu6.5 | 2.39.3-9ubuntu6.6 |
 
 ## Removed
 

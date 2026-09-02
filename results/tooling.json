@@ -1,5 +1,5 @@
 {
-  "scanned_at": "2026-09-01T13:02:24Z",
+  "scanned_at": "2026-09-02T07:34:20Z",
   "c2vm_version": "0.0.1-dev",
   "syft": {
     "path": "/home/stefan/.local/bin/syft",
@@ -13,7 +13,7 @@
   },
   "artifact": {
     "name": "disk.qcow2",
-    "sha256": "c597c7383ebda8e28ebb57f36d88a6f7f42ef4ec0e9ad3c6175a73bffd314d90",
+    "sha256": "08e245f12f2df3f598ad0b05fb5c0108f02601e17633b458f12478d8f3ca4518",
     "verified": true
   },
   "source": {
