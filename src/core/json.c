@@ -132,3 +132,39 @@ const char *json_skip_string(const char *p)
     }
     return p;
 }
+
+char *json_array(const char *doc, const char *key)
+{
+    const char *k = strstr(doc, P("\"%s\"", key));
+    if (!k)
+        return NULL;
+
+    const char *open = strchr(k + strlen(key) + 2, '[');
+    if (!open)
+        return NULL;
+
+    /* Bracket depth, skipping strings: an element's value may contain a
+       bracket, and stopping at the first one would truncate the array. */
+    int depth = 0;
+    for (const char *p = open; *p; p++)
+    {
+        if (*p == '"')
+        {
+            p = json_skip_string(p) - 1;
+            continue;
+        }
+        if (*p == '[')
+            depth++;
+        else if (*p == ']' && --depth == 0)
+        {
+            size_t n = (size_t)(p - open) + 1;
+            char *out = malloc(n + 1);
+            if (!out)
+                die("out of memory");
+            memcpy(out, open, n);
+            out[n] = '\0';
+            return out;
+        }
+    }
+    return NULL;
+}

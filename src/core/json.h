@@ -17,4 +17,9 @@ char *json_slurp(const char *path);
    or a CPE must not move a caller's depth counter. */
 const char *json_skip_string(const char *p);
 
+/* The text of a top-level array, brackets included, so a caller can embed
+   it verbatim in another document without parsing its elements. Caller
+   frees. NULL if the key is absent or the array never closes. */
+char *json_array(const char *doc, const char *key);
+
 #endif

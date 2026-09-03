@@ -6,6 +6,7 @@
 #include "custody/scan.h"
 #include "custody/diff.h"
 #include "custody/cve.h"
+#include "custody/publish.h"
 
 #define EXIT_RUNTIME_FAILURE_ERROR 1
 #define EXIT_USAGE_ERROR 2
@@ -13,9 +14,6 @@
 
 typedef int (*handler_fn)(int argc, char *argv[]);
 
-static int cmd_push(int argc, char *argv[]);
-static int cmd_sign(int argc, char *argv[]);
-static int cmd_attest(int argc, char *argv[]);
 static int cmd_verify(int argc, char *argv[]);
 
 struct command
@@ -88,24 +86,6 @@ static int not_implemented(const char *name)
     return EXIT_NOT_IMPLEMENTED_ERROR;
 }
 
-static int cmd_push(int argc, char *argv[])
-{
-    (void)argc;
-    (void)argv;
-    return not_implemented("push");
-}
-static int cmd_sign(int argc, char *argv[])
-{
-    (void)argc;
-    (void)argv;
-    return not_implemented("sign");
-}
-static int cmd_attest(int argc, char *argv[])
-{
-    (void)argc;
-    (void)argv;
-    return not_implemented("attest");
-}
 static int cmd_verify(int argc, char *argv[])
 {
     (void)argc;

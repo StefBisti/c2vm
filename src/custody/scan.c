@@ -3,6 +3,7 @@
 #include "core/cleanup.h"
 #include "core/json.h"
 #include "core/run.h"
+#include "core/util.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -53,43 +54,6 @@ static const char *basename_of(const char *path)
     return slash ? slash + 1 : path;
 }
 
-/*
- * The result outlives dozens of further P() calls - json_get() makes one per
- * lookup - so each tool gets storage of its own rather than a pool slot.
- */
-static const char *find_tool(const char *tool, const char *override, char *found, size_t cap)
-{
-    if (override)
-        return override;
-
-    static const char *DIRS[] = {"/usr/local/bin", "/usr/bin", "/bin", "/opt/homebrew/bin"};
-
-    for (size_t i = 0; i < NELEMS(DIRS); i++)
-    {
-        snprintf(found, cap, "%s/%s", DIRS[i], tool);
-        if (access(found, X_OK) == 0)
-            return found;
-    }
-
-    const char *user = getenv("SUDO_USER");
-    if (user)
-    {
-        snprintf(found, cap, "/home/%s/.local/bin/%s", user, tool);
-        if (access(found, X_OK) == 0)
-            return found;
-    }
-
-    const char *home = getenv("HOME");
-    if (home)
-    {
-        snprintf(found, cap, "%s/.local/bin/%s", home, tool);
-        if (access(found, X_OK) == 0)
-            return found;
-    }
-
-    die("cannot find %s; install it or pass --%s <path>", tool, tool);
-    return NULL;
-}
 
 static void grype_env(void)
 {
@@ -363,10 +327,10 @@ int cmd_scan(int argc, char *argv[])
     cleanup_init();
 
     static char syft_path[PATH_MAX], grype_path[PATH_MAX];
-    const char *syft = find_tool("syft", opts.syft, syft_path, sizeof syft_path);
+    const char *syft = tool_path("syft", opts.syft, syft_path, sizeof syft_path);
     const char *grype = opts.skip_cve
                             ? NULL
-                            : find_tool("grype", opts.grype, grype_path, sizeof grype_path);
+                            : tool_path("grype", opts.grype, grype_path, sizeof grype_path);
 
     opts.meta = read_file(P("%s/metadata/build.json", opts.outdir), 65536);
 

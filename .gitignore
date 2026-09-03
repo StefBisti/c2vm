@@ -48,3 +48,4 @@ c2vm-roadmap.md
 /c2vm
 
 results/cve-disk.jsoncompile_commands.json
+.cache/
