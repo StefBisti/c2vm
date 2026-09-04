@@ -42,6 +42,7 @@ Publishing:
 ./c2vm push build/disk.qcow2 ghcr.io/<user>/c2vm-demo:latest
 ./c2vm sign   ghcr.io/<user>/c2vm-demo:latest
 ./c2vm attest ghcr.io/<user>/c2vm-demo:latest
+./c2vm verify ghcr.io/<user>/c2vm-demo:latest
 ```
 
 Requires a Linux host with KVM, `qemu`, `parted`, `rsync`, `skopeo`, `umoci` and `libguestfs-tools`. `build` and `scan` need root.
@@ -65,13 +66,16 @@ Full reference in [docs/cli.md](docs/cli.md).
 ```
 ubuntu@sha256:33ceb7…            source, pinned by digest
       │
-    build          → build.json: source digest, kernel, bootloader, flags,
+    build          -> build.json: source digest, kernel, bootloader, flags,
       │                          and the sha256 of every artifact produced
-    scan           → SBOMs of the container and the disk, one syft version
+    scan           -> SBOMs of the container and the disk, one syft version
       │
-  diff / cve       → +117 packages, +152 High
+  diff / cve       -> +117 packages, +152 High
       │
-push/sign/attest   → signed in-toto statement, logged in Rekor
+push/sign/attest   -> signed in-toto statement, logged in Rekor
+      │
+    verify         -> identity, both attestations, disk-statement binding,
+                     source digest, CVE policy
 ```
 
 Each step consumes what the previous one recorded. `scan` refuses to run if the disk's hash no longer matches what `build` wrote
@@ -82,6 +86,7 @@ Each step consumes what the previous one recorded. `scan` refuses to run if the 
 src/core/       process, cleanup and JSON plumbing
 src/convert/    build, OVA packaging, boot testing
 src/custody/    SBOMs, deltas, signing, attestation
+policy/         who may have signed, and the CVE limits
 scripts/        rootfs extraction, charting
 results/        SBOMs, deltas, the predicate — committed as evidence
 ```

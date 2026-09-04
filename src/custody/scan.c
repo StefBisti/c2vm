@@ -4,6 +4,7 @@
 #include "core/json.h"
 #include "core/run.h"
 #include "core/util.h"
+#include "custody/vuln.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -54,23 +55,6 @@ static const char *basename_of(const char *path)
     return slash ? slash + 1 : path;
 }
 
-
-static void grype_env(void)
-{
-    setenv("GRYPE_DB_AUTO_UPDATE", "false", 1);
-    setenv("GRYPE_DB_VALIDATE_AGE", "false", 1);
-
-    if (geteuid() != 0)
-        return;
-
-    const char *user = getenv("SUDO_USER");
-    if (!user)
-        return;
-
-    const char *cache = P("/home/%s/.cache/grype/db", user);
-    if (access(cache, R_OK) == 0)
-        setenv("GRYPE_DB_CACHE_DIR", cache, 1);
-}
 
 static void grype_scan(const struct scan_opts *s, const char *grype, const char *name)
 {

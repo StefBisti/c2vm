@@ -10,7 +10,7 @@ c2vm <command> [options]
 - `c2vm diff <sbom-a> <sbom-b>` — package delta between two SBOMs
 - `c2vm push <artifact> <oci-ref>` — publish as an OCI artifact
 - `c2vm sign <oci-ref>` / `c2vm attest <oci-ref>` — keyless signing and attestations
-- `c2vm verify <oci-ref> [--policy policy/default.yaml]` — the headline command 
+- `c2vm verify <oci-ref> [--policy policy/default.yaml]` — signature and signer identity, both attestations
 
 ### Global flags
 

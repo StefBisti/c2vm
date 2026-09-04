@@ -7,14 +7,12 @@
 #include "custody/diff.h"
 #include "custody/cve.h"
 #include "custody/publish.h"
+#include "custody/verify.h"
 
 #define EXIT_RUNTIME_FAILURE_ERROR 1
 #define EXIT_USAGE_ERROR 2
-#define EXIT_NOT_IMPLEMENTED_ERROR 64
 
 typedef int (*handler_fn)(int argc, char *argv[]);
-
-static int cmd_verify(int argc, char *argv[]);
 
 struct command
 {
@@ -75,22 +73,9 @@ static void usage(FILE *out)
         "      --version         Show the version\n"
         "\n"
         "exit codes: 0 ok · 1 runtime failure · 2 usage error\n"
-        "            3 verification or policy failure · 64 not implemented\n"
+        "            3 verification or policy failure\n"
         "\n",
         out);
-}
-
-static int not_implemented(const char *name)
-{
-    fprintf(stderr, "c2vm: '%s' is not implemented yet\n", name);
-    return EXIT_NOT_IMPLEMENTED_ERROR;
-}
-
-static int cmd_verify(int argc, char *argv[])
-{
-    (void)argc;
-    (void)argv;
-    return not_implemented("verify");
 }
 
 static const struct command *lookup(const char *name)

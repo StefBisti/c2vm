@@ -19,4 +19,11 @@ size_t dedupe_sorted(void *base, size_t n, size_t size, int (*cmp)(const void *,
  */
 const char *tool_path(const char *tool, const char *override, char *found, size_t cap);
 
+/*
+ * Decodes base64 (either alphabet), ignoring whitespace and padding. DSSE
+ * envelopes carry their in-toto statement as one base64 blob, and an SBOM
+ * statement runs to megabytes, so this avoids shelling out. Caller frees.
+ */
+char *base64_decode(const char *in, size_t *outlen);
+
 #endif

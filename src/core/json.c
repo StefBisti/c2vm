@@ -63,7 +63,8 @@ const char *J(const char *s)
     return buf;
 }
 
-// only string values
+/* The value of a string key. Escapes are left intact; json_unescape() them
+   if the value is itself a document. */
 char *json_get(const char *json, const char *key)
 {
     char *k = strstr(json, P("\"%s\"", key));
@@ -74,8 +75,10 @@ char *json_get(const char *json, const char *key)
     if (!val)
         return NULL;
 
-    char *end = strchr(val + 1, '"');
-    if (!end)
+    /* Escape-aware: a value may contain \" - cosign's custom attestation
+       stores a whole nested document as one such string. */
+    char *end = (char *)json_skip_string(val) - 1;
+    if (*end != '"')
         return NULL;
 
     size_t n = (size_t)(end - val - 1);
@@ -133,18 +136,19 @@ const char *json_skip_string(const char *p)
     return p;
 }
 
-char *json_array(const char *doc, const char *key)
+/* Bracket-matching extractor shared by json_array and json_object. */
+static char *extract(const char *doc, const char *key, char open_ch, char close_ch)
 {
     const char *k = strstr(doc, P("\"%s\"", key));
     if (!k)
         return NULL;
 
-    const char *open = strchr(k + strlen(key) + 2, '[');
+    const char *open = strchr(k + strlen(key) + 2, open_ch);
     if (!open)
         return NULL;
 
-    /* Bracket depth, skipping strings: an element's value may contain a
-       bracket, and stopping at the first one would truncate the array. */
+    /* Depth, skipping strings: a value may contain a bracket, and stopping
+       at the first one would truncate the result. */
     int depth = 0;
     for (const char *p = open; *p; p++)
     {
@@ -153,9 +157,9 @@ char *json_array(const char *doc, const char *key)
             p = json_skip_string(p) - 1;
             continue;
         }
-        if (*p == '[')
+        if (*p == open_ch)
             depth++;
-        else if (*p == ']' && --depth == 0)
+        else if (*p == close_ch && --depth == 0)
         {
             size_t n = (size_t)(p - open) + 1;
             char *out = malloc(n + 1);
@@ -167,4 +171,45 @@ char *json_array(const char *doc, const char *key)
         }
     }
     return NULL;
+}
+
+char *json_array(const char *doc, const char *key)
+{
+    return extract(doc, key, '[', ']');
+}
+
+char *json_object(const char *doc, const char *key)
+{
+    return extract(doc, key, '{', '}');
+}
+
+/* Decodes JSON string escapes in place. cosign's "custom" attestation type
+   stores our whole statement as one escaped string under predicate.Data, so
+   it has to be unescaped before it can be parsed as JSON again. */
+char *json_unescape(char *s)
+{
+    char *w = s;
+    for (char *r = s; *r; r++)
+    {
+        if (*r != '\\' || !r[1])
+        {
+            *w++ = *r;
+            continue;
+        }
+        switch (*++r)
+        {
+        case 'n': *w++ = '\n'; break;
+        case 't': *w++ = '\t'; break;
+        case 'r': *w++ = '\r'; break;
+        case 'b': *w++ = '\b'; break;
+        case 'f': *w++ = '\f'; break;
+        case 'u': /* left as-is: nothing downstream reads non-ASCII fields */
+            *w++ = '\\';
+            *w++ = 'u';
+            break;
+        default: *w++ = *r;
+        }
+    }
+    *w = '\0';
+    return s;
 }

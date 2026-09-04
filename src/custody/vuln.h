@@ -20,6 +20,11 @@ size_t vuln_load(const char *path, struct vuln **out);
 int severity_rank(const char *severity);
 const char *severity_name(int rank);
 
+/* Pins grype to the database already on disk and, under sudo, points it at
+   $SUDO_USER's cache: root's HOME has none, and a scan must not silently
+   download a different database than the one the results were measured with. */
+void grype_env(void);
+
 #define SEVERITY_COUNT 6
 
 #endif

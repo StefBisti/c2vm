@@ -1,0 +1,16 @@
+# Verification policy for c2vm verify.
+#
+# identity/issuer pin who is allowed to have signed the artifact. Without
+# them cosign only proves that somebody signed it.
+identity: stefbisti@gmail.com
+issuer: https://github.com/login/oauth
+
+# Limits are counted over deb packages only. Every-ecosystem counts are
+# reported too, but the kernel is matched a second time by CPE against NVD,
+# which reports every CVE ever filed against that version rather than the
+# ones Ubuntu has not backported - an order of magnitude more.
+#
+# Measured on ubuntu:24.04 with grype 0.118.0 (db built 2026-09-01):
+# 5 Critical, 152 High.
+max_critical: 5
+max_high: 200

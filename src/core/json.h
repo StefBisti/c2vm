@@ -22,4 +22,11 @@ const char *json_skip_string(const char *p);
    frees. NULL if the key is absent or the array never closes. */
 char *json_array(const char *doc, const char *key);
 
+/* Same, for an object value: c2vm verify lifts the SPDX document out of an
+   attestation's predicate this way. Caller frees. */
+char *json_object(const char *doc, const char *key);
+
+/* Undoes JSON string escapes in place, returning s. */
+char *json_unescape(char *s);
+
 #endif

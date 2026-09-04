@@ -34,7 +34,7 @@ static const char *basename_of(const char *path)
  * at different content the moment after it is signed, and the signature
  * would still verify against the new thing.
  */
-static char *oci_digest(const char *oras, const char *ref)
+char *oci_digest(const char *oras, const char *ref)
 {
     char *argv[] = {(char *)oras, "manifest", "fetch", "--descriptor", (char *)ref, NULL};
 

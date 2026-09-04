@@ -4,12 +4,12 @@
 #include "core/util.h"
 #include "custody/sbom.h"
 
-#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #define NELEMS(a) (sizeof(a) / sizeof(a)[0])
 
@@ -33,10 +33,24 @@ const char *severity_name(int rank)
     return SEVERITIES[rank];
 }
 
-
-
-
 // reads a grype JSON report and returns an array of {id, severity, package, version, ecosystem}
+void grype_env(void)
+{
+    setenv("GRYPE_DB_AUTO_UPDATE", "false", 1);
+    setenv("GRYPE_DB_VALIDATE_AGE", "false", 1);
+
+    if (geteuid() != 0)
+        return;
+
+    const char *user = getenv("SUDO_USER");
+    if (!user)
+        return;
+
+    const char *cache = P("/home/%s/.cache/grype/db", user);
+    if (access(cache, R_OK) == 0)
+        setenv("GRYPE_DB_CACHE_DIR", cache, 1);
+}
+
 size_t vuln_load(const char *path, struct vuln **out)
 {
     char *doc = json_slurp(path);
@@ -152,4 +166,3 @@ static int cmp_vuln(const void *x, const void *y)
     c = strcmp(a->package, b->package);
     return c ? c : strcmp(a->version, b->version);
 }
-

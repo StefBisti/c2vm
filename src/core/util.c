@@ -63,3 +63,49 @@ const char *tool_path(const char *tool, const char *override, char *found, size_
     die("cannot find %s; install it or pass --%s <path>", tool, tool);
     return NULL;
 }
+
+static int b64val(unsigned char c)
+{
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A';
+    if (c >= 'a' && c <= 'z')
+        return c - 'a' + 26;
+    if (c >= '0' && c <= '9')
+        return c - '0' + 52;
+    if (c == '+' || c == '-')
+        return 62;
+    if (c == '/' || c == '_')
+        return 63;
+    return -1;
+}
+
+char *base64_decode(const char *in, size_t *outlen)
+{
+    size_t n = strlen(in);
+    char *out = malloc(n / 4 * 3 + 4);
+    if (!out)
+        die("out of memory");
+
+    unsigned acc = 0;
+    int bits = 0;
+    size_t w = 0;
+
+    for (const char *p = in; *p; p++)
+    {
+        int v = b64val((unsigned char)*p);
+        if (v < 0)
+            continue; /* padding, newlines, whitespace */
+        acc = (acc << 6) | (unsigned)v;
+        bits += 6;
+        if (bits >= 8)
+        {
+            bits -= 8;
+            out[w++] = (char)((acc >> bits) & 0xff);
+        }
+    }
+
+    out[w] = '\0';
+    if (outlen)
+        *outlen = w;
+    return out;
+}
