@@ -297,9 +297,7 @@ int cmd_attest(int argc, char *argv[])
     struct pub_opts o;
     if (parse_opts(argc, argv, &o, 1) != 0)
     {
-        fputs("usage: c2vm attest <oci-ref> [--out dir] [--results dir]"
-              " [--cosign path]\n",
-              stderr);
+        fputs("usage: c2vm attest <oci-ref> [--out dir] [--results dir] [--cosign path]\n", stderr);
         return EXIT_USAGE;
     }
 
@@ -309,12 +307,9 @@ int cmd_attest(int argc, char *argv[])
     char orasbuf[PATH_MAX];
     const char *oras = tool_path("oras", NULL, orasbuf, sizeof orasbuf);
 
-    /* The predicate names disk.qcow2 unless told otherwise; push decides
-       what was actually published. */
     o.artifact = "disk.qcow2";
 
-    /* Real storage: predicate_write() makes a dozen json_get_in() calls and
-       each one burns a P() slot, so a pool pointer would not survive it. */
+    // predicate_write() makes a lot of json_get_in() calls, so a pool pointer would not survive
     char pred[PATH_MAX];
     snprintf(pred, sizeof pred, "%s/predicate.json", o.results);
     predicate_write(&o, pred);
@@ -322,21 +317,14 @@ int cmd_attest(int argc, char *argv[])
     char *digest = oci_digest(oras, o.ref);
     const char *subject = P("%s@%s", o.ref, digest);
 
-    /* Two claims about one artifact: what is inside it, and how it got made.
-       The SBOM has a standard predicate type; the conversion record does not
-       exist as a standard, which is the gap this project fills. */
     step("attesting the SBOM");
-    run_ok(cosign, "attest", "--yes", "--type", "spdxjson",
-           "--predicate", P("%s/sbom-disk.spdx.json", o.results),
-           subject, NULL);
+    run_ok(cosign, "attest", "--yes", "--type", "spdxjson", "--predicate", P("%s/sbom-disk.spdx.json", o.results), subject, NULL);
 
     step("attesting the conversion record");
     run_ok(cosign, "attest", "--yes", "--type", "custom", "--predicate", pred, subject, NULL);
 
     fprintf(stderr, "\n  both attestations attached to %s\n", subject);
-    fprintf(stderr, "  entries are public in Rekor; list them with:\n"
-                    "    cosign tree %s\n",
-            subject);
+    fprintf(stderr, "  entries are public in Rekor; list them with:\n    cosign tree %s\n", subject);
 
     free(digest);
     return EXIT_SUCCESS;
