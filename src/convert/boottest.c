@@ -2,6 +2,7 @@
 #include "core/cleanup.h"
 #include "core/json.h"
 #include "core/run.h"
+#include "core/util.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -12,8 +13,6 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-
-#define EXIT_USAGE 2
 
 static const char *OVMF_CODE = "/usr/share/OVMF/OVMF_CODE_4M.fd";
 static const char *OVMF_VARS = "/usr/share/OVMF/OVMF_VARS_4M.fd";
@@ -463,10 +462,7 @@ int cmd_boot_test(int argc, char *argv[])
 
     cleanup_init();
 
-    /* Both outlive dozens of further P() calls — every ssh attempt makes one
-       — so they get real storage rather than a slot in the rotating pool. */
-    char disk[PATH_MAX];
-    snprintf(disk, sizeof disk, "%s", has_suffix(t.artifact, ".ova") ? unpack_ova(&t) : t.artifact);
+    const char *disk = has_suffix(t.artifact, ".ova") ? unpack_ova(&t) : t.artifact;
 
     char logpath[PATH_MAX];
     snprintf(logpath, sizeof logpath, "%s/boot-test.log", t.outdir);

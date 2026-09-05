@@ -1,5 +1,6 @@
 #include "core/json.h"
 #include "core/run.h"
+#include "core/util.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -8,16 +9,12 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define NELEMS(a) (sizeof(a) / sizeof(a)[0])
-
-// escapes strings with rotating buffers
+/* Escapes a string for embedding in JSON. Allocates and leaks, for the same
+   reason P() does: the result is usually one of a dozen arguments to a single
+   fprintf, and a shared buffer cannot survive that. */
 const char *J(const char *s)
 {
-    static char pool[16][PATH_MAX];
-    static size_t next;
-
-    char *buf = pool[next];
-    next = (next + 1) % NELEMS(pool);
+    char buf[PATH_MAX];
 
     size_t w = 0;
     for (const unsigned char *p = (const unsigned char *)(s ? s : ""); *p; p++)
@@ -60,7 +57,10 @@ const char *J(const char *s)
     }
     buf[w] = '\0';
 
-    return buf;
+    char *out = strdup(buf);
+    if (!out)
+        die("out of memory");
+    return out;
 }
 
 /* The value of a string key. Escapes are left intact; json_unescape() them

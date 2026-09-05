@@ -15,9 +15,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#define EXIT_USAGE 2
-#define NELEMS(a) (sizeof(a) / sizeof(a)[0])
-
 struct scan_opts
 {
     const char *artifact;
@@ -47,12 +44,6 @@ static void scan_usage(void)
         "  --skip-cve         write SBOMs but do not scan for vulnerabilities\n"
         "  --no-verify        do not check the artifact against build.json's hash\n",
         stderr);
-}
-
-static const char *basename_of(const char *path)
-{
-    const char *slash = strrchr(path, '/');
-    return slash ? slash + 1 : path;
 }
 
 
@@ -310,11 +301,10 @@ int cmd_scan(int argc, char *argv[])
 
     cleanup_init();
 
-    static char syft_path[PATH_MAX], grype_path[PATH_MAX];
-    const char *syft = tool_path("syft", opts.syft, syft_path, sizeof syft_path);
+    const char *syft = tool_path("syft", opts.syft);
     const char *grype = opts.skip_cve
                             ? NULL
-                            : tool_path("grype", opts.grype, grype_path, sizeof grype_path);
+                            : tool_path("grype", opts.grype);
 
     opts.meta = read_file(P("%s/metadata/build.json", opts.outdir), 65536);
 

@@ -3,6 +3,7 @@
 #include "core/json.h"
 #include "convert/ova.h"
 #include "core/run.h"
+#include "core/util.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -15,9 +16,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <crypt.h>
-
-#define EXIT_USAGE 2
-#define NELEMS(a) (sizeof(a) / sizeof(a)[0])
 
 /* Everything the conversion adds that a container image does not have. */
 static const char *BASE_PACKAGES[] = {

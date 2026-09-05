@@ -2,10 +2,17 @@
 
 #include "core/run.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+
+const char *basename_of(const char *path)
+{
+    const char *slash = strrchr(path, '/');
+    return slash ? slash + 1 : path;
+}
 
 size_t dedupe_sorted(void *base, size_t n, size_t size, int (*cmp)(const void *, const void *))
 {
@@ -28,36 +35,36 @@ size_t dedupe_sorted(void *base, size_t n, size_t size, int (*cmp)(const void *,
     return w;
 }
 
-#define NELEMS(a) (sizeof(a) / sizeof(a)[0])
-
-const char *tool_path(const char *tool, const char *override, char *found, size_t cap)
+const char *tool_path(const char *tool, const char *override)
 {
     if (override)
         return override;
+
+    char found[PATH_MAX];
 
     static const char *DIRS[] = {"/usr/local/bin", "/usr/bin", "/bin", "/opt/homebrew/bin"};
 
     for (size_t i = 0; i < NELEMS(DIRS); i++)
     {
-        snprintf(found, cap, "%s/%s", DIRS[i], tool);
+        snprintf(found, sizeof found, "%s/%s", DIRS[i], tool);
         if (access(found, X_OK) == 0)
-            return found;
+            return P("%s", found);
     }
 
     const char *user = getenv("SUDO_USER");
     if (user)
     {
-        snprintf(found, cap, "/home/%s/.local/bin/%s", user, tool);
+        snprintf(found, sizeof found, "/home/%s/.local/bin/%s", user, tool);
         if (access(found, X_OK) == 0)
-            return found;
+            return P("%s", found);
     }
 
     const char *home = getenv("HOME");
     if (home)
     {
-        snprintf(found, cap, "%s/.local/bin/%s", home, tool);
+        snprintf(found, sizeof found, "%s/.local/bin/%s", home, tool);
         if (access(found, X_OK) == 0)
-            return found;
+            return P("%s", found);
     }
 
     die("cannot find %s; install it or pass --%s <path>", tool, tool);

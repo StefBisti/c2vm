@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "core/util.h"
 #include "convert/boottest.h"
 #include "convert/build.h"
 #include "custody/scan.h"
@@ -9,8 +10,7 @@
 #include "custody/publish.h"
 #include "custody/verify.h"
 
-#define EXIT_RUNTIME_FAILURE_ERROR 1
-#define EXIT_USAGE_ERROR 2
+#define EXIT_USAGE_ERROR EXIT_USAGE
 
 typedef int (*handler_fn)(int argc, char *argv[]);
 

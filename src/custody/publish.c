@@ -11,8 +11,6 @@
 #include <string.h>
 #include <time.h>
 
-#define EXIT_USAGE 2
-
 /* Three commands over one artifact, so they share their options. */
 struct pub_opts
 {
@@ -22,12 +20,6 @@ struct pub_opts
     const char *results; /* holds the SBOM and the diff */
     const char *tool;    /* --oras or --cosign override */
 };
-
-static const char *basename_of(const char *path)
-{
-    const char *slash = strrchr(path, '/');
-    return slash ? slash + 1 : path;
-}
 
 /*
  * Everything downstream signs a digest, never a tag: a tag can be repointed
@@ -218,8 +210,7 @@ int cmd_push(int argc, char *argv[])
         return EXIT_USAGE;
     }
 
-    char orasbuf[PATH_MAX];
-    const char *oras = tool_path("oras", o.tool, orasbuf, sizeof orasbuf);
+    const char *oras = tool_path("oras", o.tool);
 
     char *meta = json_slurp(P("%s/metadata/build.json", o.outdir));
     char *src = json_get_in(meta, "source", "digest");
@@ -271,11 +262,9 @@ int cmd_sign(int argc, char *argv[])
         return EXIT_USAGE;
     }
 
-    char buf[PATH_MAX];
-    const char *cosign = tool_path("cosign", o.tool, buf, sizeof buf);
+    const char *cosign = tool_path("cosign", o.tool);
 
-    char orasbuf[PATH_MAX];
-    const char *oras = tool_path("oras", NULL, orasbuf, sizeof orasbuf);
+    const char *oras = tool_path("oras", NULL);
 
     char *digest = oci_digest(oras, o.ref);
 
@@ -301,17 +290,13 @@ int cmd_attest(int argc, char *argv[])
         return EXIT_USAGE;
     }
 
-    char buf[PATH_MAX];
-    const char *cosign = tool_path("cosign", o.tool, buf, sizeof buf);
+    const char *cosign = tool_path("cosign", o.tool);
 
-    char orasbuf[PATH_MAX];
-    const char *oras = tool_path("oras", NULL, orasbuf, sizeof orasbuf);
+    const char *oras = tool_path("oras", NULL);
 
     o.artifact = "disk.qcow2";
 
-    // predicate_write() makes a lot of json_get_in() calls, so a pool pointer would not survive
-    char pred[PATH_MAX];
-    snprintf(pred, sizeof pred, "%s/predicate.json", o.results);
+    const char *pred = P("%s/predicate.json", o.results);
     predicate_write(&o, pred);
 
     char *digest = oci_digest(oras, o.ref);

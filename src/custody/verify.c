@@ -11,9 +11,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define EXIT_USAGE 2
-#define EXIT_POLICY 3
-
 /*
  * The consuming end of the chain. Everything the other commands recorded is
  * now on a registry and signed; this reads it back holding nothing but a
@@ -298,10 +295,9 @@ int cmd_verify(int argc, char *argv[])
     struct policy pol;
     policy_load(policy_path, &pol);
 
-    char cbuf[PATH_MAX], obuf[PATH_MAX], gbuf[PATH_MAX];
-    const char *cosign = tool_path("cosign", cosign_override, cbuf, sizeof cbuf);
-    const char *oras = tool_path("oras", oras_override, obuf, sizeof obuf);
-    const char *grype = tool_path("grype", grype_override, gbuf, sizeof gbuf);
+    const char *cosign = tool_path("cosign", cosign_override);
+    const char *oras = tool_path("oras", oras_override);
+    const char *grype = tool_path("grype", grype_override);
 
     step("verifying %s", ref);
     fprintf(stderr, "  identity %s (%s)\n\n", pol.identity, pol.issuer);

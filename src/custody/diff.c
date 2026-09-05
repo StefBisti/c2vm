@@ -1,15 +1,13 @@
 #include "custody/diff.h"
 #include "core/json.h"
 #include "core/run.h"
+#include "core/util.h"
 #include "custody/sbom.h"
 
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define EXIT_USAGE 2
-#define NELEMS(a) (sizeof(a) / sizeof(a)[0])
 
 struct change
 {
@@ -23,6 +21,32 @@ struct diff_opts
     const char *b;
     const char *results;
 };
+
+/* Everything both report writers need. They took thirteen parameters each
+   before, in an order only the call site knew. */
+struct report
+{
+    const struct diff_opts *o;
+    const struct pkg *a, *b;
+    size_t na, nb;
+    const struct pkg *added, *removed;
+    size_t nadd, nrem;
+    const struct change *changed;
+    size_t nchg, nunch;
+    const char **ecos;
+    size_t neco;
+};
+
+/* One row of the by-ecosystem table, counted with the helper sbom.c already
+   exports rather than four more inline loops. */
+static void eco_row(const struct report *r, const char *eco,
+                    size_t *in_a, size_t *in_b, size_t *added, size_t *removed)
+{
+    *in_a = sbom_count_eco(r->a, r->na, eco);
+    *in_b = sbom_count_eco(r->b, r->nb, eco);
+    *added = sbom_count_eco(r->added, r->nadd, eco);
+    *removed = sbom_count_eco(r->removed, r->nrem, eco);
+}
 
 
 static const struct
@@ -109,14 +133,9 @@ static size_t collect_ecos(const struct pkg *a, size_t na,
     return n;
 }
 
-static void write_json(const struct diff_opts *o,
-                       const struct pkg *added, size_t nadd,
-                       const struct pkg *removed, size_t nrem,
-                       const struct change *changed, size_t nchg,
-                       size_t nunch, size_t na, size_t nb,
-                       const char *ecos[], size_t neco,
-                       const struct pkg *a, const struct pkg *b)
+static void write_json(const struct report *r)
 {
+    const struct diff_opts *o = r->o;
     const char *path = P("%s/sbom-diff.json", o->results);
     fprintf(stderr, "  > %s\n", path);
 
@@ -125,72 +144,56 @@ static void write_json(const struct diff_opts *o,
         die("cannot write %s: %s", path, strerror(errno));
 
     fprintf(f, "{\n");
-    fprintf(f, "  \"a\": { \"path\": \"%s\", \"packages\": %zu },\n", J(o->a), na);
-    fprintf(f, "  \"b\": { \"path\": \"%s\", \"packages\": %zu },\n", J(o->b), nb);
+    fprintf(f, "  \"a\": { \"path\": \"%s\", \"packages\": %zu },\n", J(o->a), r->na);
+    fprintf(f, "  \"b\": { \"path\": \"%s\", \"packages\": %zu },\n", J(o->b), r->nb);
     fprintf(f, "  \"summary\": { \"added\": %zu, \"removed\": %zu, "
                "\"changed\": %zu, \"unchanged\": %zu },\n",
-            nadd, nrem, nchg, nunch);
+            r->nadd, r->nrem, r->nchg, r->nunch);
 
     fprintf(f, "  \"by_ecosystem\": {\n");
-    for (size_t e = 0; e < neco; e++)
+    for (size_t e = 0; e < r->neco; e++)
     {
-        size_t ia = 0, ib = 0, ad = 0, rm = 0;
-        for (size_t i = 0; i < na; i++)
-            if (!strcmp(a[i].eco, ecos[e]))
-                ia++;
-        for (size_t i = 0; i < nb; i++)
-            if (!strcmp(b[i].eco, ecos[e]))
-                ib++;
-        for (size_t i = 0; i < nadd; i++)
-            if (!strcmp(added[i].eco, ecos[e]))
-                ad++;
-        for (size_t i = 0; i < nrem; i++)
-            if (!strcmp(removed[i].eco, ecos[e]))
-                rm++;
+        size_t ia, ib, ad, rm;
+        eco_row(r, r->ecos[e], &ia, &ib, &ad, &rm);
 
         fprintf(f, "    \"%s\": { \"a\": %zu, \"b\": %zu, \"added\": %zu, "
                    "\"removed\": %zu }%s\n",
-                J(ecos[e]), ia, ib, ad, rm, e + 1 < neco ? "," : "");
+                J(r->ecos[e]), ia, ib, ad, rm, e + 1 < r->neco ? "," : "");
     }
     fprintf(f, "  },\n");
 
     fprintf(f, "  \"added\": [\n");
-    for (size_t i = 0; i < nadd; i++)
+    for (size_t i = 0; i < r->nadd; i++)
         fprintf(f, "    { \"name\": \"%s\", \"version\": \"%s\", "
                    "\"ecosystem\": \"%s\", \"group\": \"%s\" }%s\n",
-                J(added[i].name), J(added[i].version), J(added[i].eco),
-                J(classify(added[i].name)), i + 1 < nadd ? "," : "");
+                J(r->added[i].name), J(r->added[i].version), J(r->added[i].eco),
+                J(classify(r->added[i].name)), i + 1 < r->nadd ? "," : "");
     fprintf(f, "  ],\n");
 
     fprintf(f, "  \"removed\": [\n");
-    for (size_t i = 0; i < nrem; i++)
+    for (size_t i = 0; i < r->nrem; i++)
         fprintf(f, "    { \"name\": \"%s\", \"version\": \"%s\", "
                    "\"ecosystem\": \"%s\" }%s\n",
-                J(removed[i].name), J(removed[i].version), J(removed[i].eco),
-                i + 1 < nrem ? "," : "");
+                J(r->removed[i].name), J(r->removed[i].version), J(r->removed[i].eco),
+                i + 1 < r->nrem ? "," : "");
     fprintf(f, "  ],\n");
 
     fprintf(f, "  \"changed\": [\n");
-    for (size_t i = 0; i < nchg; i++)
+    for (size_t i = 0; i < r->nchg; i++)
         fprintf(f, "    { \"name\": \"%s\", \"ecosystem\": \"%s\", "
                    "\"from\": \"%s\", \"to\": \"%s\" }%s\n",
-                J(changed[i].from.name), J(changed[i].from.eco),
-                J(changed[i].from.version), J(changed[i].to.version),
-                i + 1 < nchg ? "," : "");
+                J(r->changed[i].from.name), J(r->changed[i].from.eco),
+                J(r->changed[i].from.version), J(r->changed[i].to.version),
+                i + 1 < r->nchg ? "," : "");
     fprintf(f, "  ]\n}\n");
 
     if (fclose(f) != 0)
         die("cannot close %s: %s", path, strerror(errno));
 }
 
-static void write_markdown(const struct diff_opts *o,
-                           const struct pkg *added, size_t nadd,
-                           const struct pkg *removed, size_t nrem,
-                           const struct change *changed, size_t nchg,
-                           size_t nunch, size_t na, size_t nb,
-                           const char *ecos[], size_t neco,
-                           const struct pkg *a, const struct pkg *b)
+static void write_markdown(const struct report *r)
 {
+    const struct diff_opts *o = r->o;
     const char *path = P("%s/sbom-diff.md", o->results);
     fprintf(stderr, "  > %s\n", path);
 
@@ -199,34 +202,23 @@ static void write_markdown(const struct diff_opts *o,
         die("cannot write %s: %s", path, strerror(errno));
 
     fprintf(f, "# SBOM delta\n\n");
-    fprintf(f, "- baseline: `%s` (%zu packages)\n", o->a, na);
-    fprintf(f, "- result:   `%s` (%zu packages)\n\n", o->b, nb);
+    fprintf(f, "- baseline: `%s` (%zu packages)\n", o->a, r->na);
+    fprintf(f, "- result:   `%s` (%zu packages)\n\n", o->b, r->nb);
 
     fprintf(f, "| | count |\n|---|---|\n");
     fprintf(f, "| added | %zu |\n| removed | %zu |\n"
                "| version changed | %zu |\n| unchanged | %zu |\n\n",
-            nadd, nrem, nchg, nunch);
+            r->nadd, r->nrem, r->nchg, r->nunch);
 
     fprintf(f, "## By ecosystem\n\n");
     fprintf(f, "| ecosystem | baseline | result | added | removed |\n");
     fprintf(f, "|---|---|---|---|---|\n");
-    for (size_t e = 0; e < neco; e++)
+    for (size_t e = 0; e < r->neco; e++)
     {
-        size_t ia = 0, ib = 0, ad = 0, rm = 0;
-        for (size_t i = 0; i < na; i++)
-            if (!strcmp(a[i].eco, ecos[e]))
-                ia++;
-        for (size_t i = 0; i < nb; i++)
-            if (!strcmp(b[i].eco, ecos[e]))
-                ib++;
-        for (size_t i = 0; i < nadd; i++)
-            if (!strcmp(added[i].eco, ecos[e]))
-                ad++;
-        for (size_t i = 0; i < nrem; i++)
-            if (!strcmp(removed[i].eco, ecos[e]))
-                rm++;
+        size_t ia, ib, ad, rm;
+        eco_row(r, r->ecos[e], &ia, &ib, &ad, &rm);
         fprintf(f, "| %s | %zu | %zu | %zu | %zu |\n",
-                ecos[e], ia, ib, ad, rm);
+                r->ecos[e], ia, ib, ad, rm);
     }
 
     /* Only deb additions get grouped by function: the others are kernel
@@ -238,36 +230,36 @@ static void write_markdown(const struct diff_opts *o,
     for (size_t g = 0; g < NELEMS(ORDER); g++)
     {
         size_t count = 0;
-        for (size_t i = 0; i < nadd; i++)
-            if (!strcmp(added[i].eco, "deb") &&
-                !strcmp(classify(added[i].name), ORDER[g]))
+        for (size_t i = 0; i < r->nadd; i++)
+            if (!strcmp(r->added[i].eco, "deb") &&
+                !strcmp(classify(r->added[i].name), ORDER[g]))
                 count++;
 
         if (count == 0)
             continue;
 
         fprintf(f, "### %s (%zu)\n\n", ORDER[g], count);
-        for (size_t i = 0; i < nadd; i++)
-            if (!strcmp(added[i].eco, "deb") &&
-                !strcmp(classify(added[i].name), ORDER[g]))
-                fprintf(f, "- `%s` %s\n", added[i].name, added[i].version);
+        for (size_t i = 0; i < r->nadd; i++)
+            if (!strcmp(r->added[i].eco, "deb") &&
+                !strcmp(classify(r->added[i].name), ORDER[g]))
+                fprintf(f, "- `%s` %s\n", r->added[i].name, r->added[i].version);
         fprintf(f, "\n");
     }
 
-    if (nchg)
+    if (r->nchg)
     {
         fprintf(f, "## Version changed\n\n| package | from | to |\n|---|---|---|\n");
-        for (size_t i = 0; i < nchg; i++)
-            fprintf(f, "| `%s` | %s | %s |\n", changed[i].from.name,
-                    changed[i].from.version, changed[i].to.version);
+        for (size_t i = 0; i < r->nchg; i++)
+            fprintf(f, "| `%s` | %s | %s |\n", r->changed[i].from.name,
+                    r->changed[i].from.version, r->changed[i].to.version);
         fprintf(f, "\n");
     }
 
-    if (nrem)
+    if (r->nrem)
     {
         fprintf(f, "## Removed\n\n");
-        for (size_t i = 0; i < nrem; i++)
-            fprintf(f, "- `%s` %s\n", removed[i].name, removed[i].version);
+        for (size_t i = 0; i < r->nrem; i++)
+            fprintf(f, "- `%s` %s\n", r->removed[i].name, r->removed[i].version);
     }
 
     if (fclose(f) != 0)
@@ -398,8 +390,10 @@ int cmd_diff(int argc, char *argv[])
 
     run_ok("mkdir", "-p", o.results, NULL);
 
-    write_json(&o, added, nadd, removed, nrem, changed, nchg, nunch, na, nb, ecos, neco, a, b);
-    write_markdown(&o, added, nadd, removed, nrem, changed, nchg, nunch, na, nb, ecos, neco, a, b);
+    struct report r = {&o, a, b, na, nb, added, removed, nadd, nrem,
+                       changed, nchg, nunch, ecos, neco};
+    write_json(&r);
+    write_markdown(&r);
 
     fprintf(stderr, "\n  added:     %zu\n", nadd);
     fprintf(stderr, "  removed:   %zu\n", nrem);
@@ -407,11 +401,8 @@ int cmd_diff(int argc, char *argv[])
     fprintf(stderr, "  unchanged: %zu\n", nunch);
     for (size_t e = 0; e < neco; e++)
     {
-        size_t ad = 0;
-        for (size_t i = 0; i < nadd; i++)
-            if (!strcmp(added[i].eco, ecos[e]))
-                ad++;
-        fprintf(stderr, "    %-10s +%zu\n", ecos[e], ad);
+        fprintf(stderr, "    %-10s +%zu\n", ecos[e],
+                sbom_count_eco(added, nadd, ecos[e]));
     }
 
     free(a);

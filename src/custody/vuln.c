@@ -11,8 +11,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define NELEMS(a) (sizeof(a) / sizeof(a)[0])
-
 static int cmp_vuln(const void *x, const void *y);
 
 static const char *SEVERITIES[SEVERITY_COUNT] = {

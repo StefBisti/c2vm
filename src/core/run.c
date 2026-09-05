@@ -248,19 +248,24 @@ void die(const char *fmt, ...)
     exit(EXIT_FAILURE); /* atexit handler unwinds mounts and loop devices */
 }
 
-// requires no buffer for formatting in the caller
+/*
+ * Formats into fresh storage the process never frees. This used to hand back
+ * a slot of a rotating pool, which is where three separate bugs came from:
+ * any caller that held the pointer across a few more P() calls silently got
+ * somebody else's string. c2vm is a short-lived CLI, so leaking a few hundred
+ * kilobytes over one run is cheaper than a rule every caller has to remember.
+ */
 const char *P(const char *fmt, ...)
 {
-    static char pool[8][PATH_MAX];
-    static size_t next;
-
-    char *buf = pool[next];
-    next = (next + 1) % (sizeof pool / sizeof pool[0]);
+    char buf[PATH_MAX];
 
     va_list ap;
     va_start(ap, fmt);
-    vsnprintf(buf, PATH_MAX, fmt, ap);
+    vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
 
-    return buf;
+    char *s = strdup(buf);
+    if (!s)
+        die("out of memory");
+    return s;
 }

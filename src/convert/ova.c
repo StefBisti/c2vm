@@ -37,10 +37,12 @@ static char *sha256_of(const char *path)
     return out;
 }
 
-// xml escapes
+/* XML-escapes a string. Allocates and leaks like P() and J(): write_ovf
+   passes it three times inside one fprintf, and a shared buffer would hand
+   all three the same pointer. */
 static const char *X(const char *s)
 {
-    static char buf[512];
+    char buf[512];
     size_t w = 0;
 
     for (const char *p = s; *p && w < sizeof buf - 8; p++)
@@ -75,7 +77,10 @@ static const char *X(const char *s)
     }
     buf[w] = '\0';
 
-    return buf;
+    char *out = strdup(buf);
+    if (!out)
+        die("out of memory");
+    return out;
 }
 
 static void convert_vmdk(const char *outdir)

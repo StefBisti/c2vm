@@ -1,6 +1,7 @@
 #include "custody/cve.h"
 #include "core/json.h"
 #include "core/run.h"
+#include "core/util.h"
 #include "custody/vuln.h"
 
 #include <errno.h>
@@ -8,9 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define EXIT_USAGE 2
-#define NELEMS(a) (sizeof(a) / sizeof(a)[0])
 
 /* How many packages the attribution table names before it stops. */
 #define TOP_PACKAGES 15
@@ -80,6 +78,8 @@ static void tally(const struct vuln *v, size_t n, size_t out[SEVERITY_COUNT][2])
     }
 }
 
+/* ponytail: linear scan per finding, O(n*rows). ~7500 findings over ~200
+   packages runs instantly; sort by (package, eco) first if that changes. */
 static size_t attribute(const struct vuln *v, size_t n, struct attribution **out)
 {
     struct attribution *rows = malloc((n + 1) * sizeof *rows);
