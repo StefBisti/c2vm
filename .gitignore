@@ -47,5 +47,13 @@ c2vm-roadmap.md
 # Other
 /c2vm
 
-results/cve-disk.jsoncompile_commands.json
+compile_commands.json
+
+# Raw scan output: large, regenerable with `c2vm scan`, and the disk SBOM is
+# recoverable byte-for-byte from the signed attestation in the registry.
+# The deltas and the predicate stay committed as evidence.
+results-*/
+build-*/
 .cache/
+
+results/

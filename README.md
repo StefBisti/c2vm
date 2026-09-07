@@ -119,7 +119,7 @@ src/convert/    build, OVA packaging, boot testing
 src/custody/    SBOMs, deltas, signing, attestation
 policy/         who may have signed, and the CVE limits
 scripts/        rootfs extraction, charting
-results/        SBOMs, deltas, the predicate — committed as evidence
+results/        SBOMs, deltas, the predicate
 ```
 
 ## Acknowledgements
