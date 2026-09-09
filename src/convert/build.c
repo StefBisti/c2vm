@@ -59,7 +59,8 @@ struct build_opts
     char mnt[PATH_MAX];
     char root_uuid[64]; /* filled in by write_guest_config */
 
-    char kver[64]; // kernel version
+    char osname[128]; // guest NAME + VERSION_ID, for the OVF
+    char kver[64];    // kernel version
     char gver[64]; // grub version
 };
 
@@ -431,6 +432,10 @@ static void install_system(struct build_opts *o)
     // build.json is written after the disk has been converted, by which point the chroot is gone
     char *kver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", o->kernel, NULL);
     char *gver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", "grub-efi-amd64", NULL);
+    char *osname = run_capture("chroot", o->mnt, "sh", "-c", ". /etc/os-release && printf '%s %s' \"$NAME\" \"$VERSION_ID\"", NULL);
+    snprintf(o->osname, sizeof o->osname, "%s", osname);
+    free(osname);
+
     snprintf(o->kver, sizeof o->kver, "%s", kver);
     snprintf(o->gver, sizeof o->gver, "%s", gver);
     free(kver);
@@ -758,7 +763,7 @@ static void convert_formats(const struct build_opts *o)
     }
 
     if (has_format(o, "ova"))
-        ova_write(o->outdir, o->hostname);
+        ova_write(o->outdir, o->hostname, o->osname);
 }
 
 #pragma endregion STAGES

@@ -17,6 +17,7 @@
 #define OVA_CPUS 2
 #define OVA_MEMORY_MB 2048
 
+// stat's a file, dies if missing
 static unsigned long long file_size(const char *path)
 {
     if (dry_run)
@@ -28,6 +29,7 @@ static unsigned long long file_size(const char *path)
     return (unsigned long long)st.st_size;
 }
 
+// gets the sha
 static char *sha256_of(const char *path)
 {
     char *out = run_capture("sha256sum", path, NULL);
@@ -37,9 +39,7 @@ static char *sha256_of(const char *path)
     return out;
 }
 
-/* XML-escapes a string. Allocates and leaks like P() and J(): write_ovf
-   passes it three times inside one fprintf, and a shared buffer would hand
-   all three the same pointer. */
+// XML-escapes a string
 static const char *X(const char *s)
 {
     char buf[512];
@@ -83,6 +83,7 @@ static const char *X(const char *s)
     return out;
 }
 
+// convert the raw file into vmdk (the actual disk inside ova tar)
 static void convert_vmdk(const char *outdir)
 {
     step("converting to vmdk (streamOptimized)");
@@ -91,7 +92,8 @@ static void convert_vmdk(const char *outdir)
            P("%s/disk.raw", outdir), P("%s/disk.vmdk", outdir), NULL);
 }
 
-static void write_ovf(const char *outdir, const char *name)
+// writes the ovf xml for the ova tar
+static void write_ovf(const char *outdir, const char *name, const char *os)
 {
     step("writing OVF descriptor");
 
@@ -107,6 +109,7 @@ static void write_ovf(const char *outdir, const char *name)
                "CIM_ResourceAllocationSettingData\"\n"
                "  xmlns:vssd=\"http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/"
                "CIM_VirtualSystemSettingData\"\n"
+               "  xmlns:vmw=\"http://www.vmware.com/schema/ovf\"\n"
                "  xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n"
                "  <References>\n"
                "    <File ovf:href=\"disk.vmdk\" ovf:id=\"file1\" ovf:size=\"%llu\"/>\n"
@@ -116,8 +119,7 @@ static void write_ovf(const char *outdir, const char *name)
                "    <Disk ovf:capacity=\"%llu\" ovf:capacityAllocationUnits=\"byte\"\n"
                "          ovf:diskId=\"vmdisk1\" ovf:fileRef=\"file1\"\n"
                "          ovf:format=\"http://www.vmware.com/interfaces/specifications/"
-               "vmdk.html#streamOptimized\"\n"
-               "          ovf:populatedSize=\"%llu\"/>\n"
+               "vmdk.html#streamOptimized\"/>\n"
                "  </DiskSection>\n"
                "  <NetworkSection>\n"
                "    <Info>The list of logical networks</Info>\n"
@@ -125,12 +127,18 @@ static void write_ovf(const char *outdir, const char *name)
                "      <Description>Network the guest takes a DHCP lease on</Description>\n"
                "    </Network>\n"
                "  </NetworkSection>\n"
-               "  <VirtualSystem ovf:id=\"%s\">\n"
+               "  <VirtualSystem ovf:id=\"vm\">\n"
                "    <Info>A container image converted to a virtual machine by c2vm</Info>\n"
                "    <Name>%s</Name>\n"
-               "    <OperatingSystemSection ovf:id=\"94\">\n"
+               /* CIM_OperatingSystem.OSType. Importers set the guest
+                  architecture from this number, and the distro entries come in
+                  32/64 pairs: the generic 36 (LINUX) arrives as 32-bit, whose
+                  firmware cannot execute our BOOTX64.EFI. 102 is Linux 64-bit
+                  - architecture-correct and distro-neutral. The accurate name
+                  is in the Description below. */
+               "    <OperatingSystemSection ovf:id=\"102\">\n"
                "      <Info>The kind of installed guest operating system</Info>\n"
-               "      <Description>Ubuntu Linux (64-bit)</Description>\n"
+               "      <Description>%s (64-bit)</Description>\n"
                "    </OperatingSystemSection>\n"
                "    <VirtualHardwareSection>\n"
                "      <Info>Virtual hardware requirements</Info>\n"
@@ -180,11 +188,12 @@ static void write_ovf(const char *outdir, const char *name)
                "        <rasd:ResourceSubType>E1000</rasd:ResourceSubType>\n"
                "        <rasd:ResourceType>%d</rasd:ResourceType>\n"
                "      </Item>\n"
+               "      <vmw:Config ovf:required=\"false\" ovf:key=\"firmware\" vmw:value=\"efi\"/>\n"
                "    </VirtualHardwareSection>\n"
                "  </VirtualSystem>\n"
                "</Envelope>\n",
-               vmdk_size, capacity, vmdk_size,
-               X(name), X(name), X(name),
+               vmdk_size, capacity,
+               X(name), X(os && *os ? os : "Linux"), X(name),
                OVA_CPUS, RASD_PROCESSOR, OVA_CPUS,
                OVA_MEMORY_MB, RASD_MEMORY, OVA_MEMORY_MB,
                RASD_SCSI_CONTROLLER,
@@ -192,6 +201,7 @@ static void write_ovf(const char *outdir, const char *name)
                RASD_ETHERNET);
 }
 
+// writes the manifest for the ova tar
 static void write_manifest(const char *outdir)
 {
     step("writing OVF manifest");
@@ -212,20 +222,19 @@ static void write_manifest(const char *outdir)
 static void write_tar(const char *outdir)
 {
     step("packing OVA");
-    run_ok("tar", "--format=ustar", "-cf", P("%s/disk.ova", outdir), "-C", outdir,
-           "disk.ovf", "disk.mf", "disk.vmdk", NULL);
+    run_ok("tar", "--format=ustar", "-cf", P("%s/disk.ova", outdir), "-C", outdir, "disk.ovf", "disk.mf", "disk.vmdk", NULL);
 }
 
+// deletes the vmdk, ovf and manifest, only the ova is left
 static void discard_members(const char *outdir)
 {
-    run_ok("rm", "-f", P("%s/disk.vmdk", outdir), P("%s/disk.ovf", outdir),
-           P("%s/disk.mf", outdir), NULL);
+    run_ok("rm", "-f", P("%s/disk.vmdk", outdir), P("%s/disk.ovf", outdir), P("%s/disk.mf", outdir), NULL);
 }
 
-void ova_write(const char *outdir, const char *name)
+void ova_write(const char *outdir, const char *name, const char *os)
 {
     convert_vmdk(outdir);
-    write_ovf(outdir, name);
+    write_ovf(outdir, name, os);
     write_manifest(outdir);
     write_tar(outdir);
     discard_members(outdir);
