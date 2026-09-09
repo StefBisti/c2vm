@@ -1,7 +1,5 @@
 #include "core/json.h"
-#include "core/run.h"
 #include "core/util.h"
-
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
@@ -9,9 +7,6 @@
 #include <string.h>
 #include <sys/stat.h>
 
-/* Escapes a string for embedding in JSON. Allocates and leaks, for the same
-   reason P() does: the result is usually one of a dozen arguments to a single
-   fprintf, and a shared buffer cannot survive that. */
 const char *J(const char *s)
 {
     char buf[PATH_MAX];
@@ -63,8 +58,6 @@ const char *J(const char *s)
     return out;
 }
 
-/* The value of a string key. Escapes are left intact; json_unescape() them
-   if the value is itself a document. */
 char *json_get(const char *json, const char *key)
 {
     char *k = strstr(json, P("\"%s\"", key));
@@ -75,8 +68,6 @@ char *json_get(const char *json, const char *key)
     if (!val)
         return NULL;
 
-    /* Escape-aware: a value may contain \" - cosign's custom attestation
-       stores a whole nested document as one such string. */
     char *end = (char *)json_skip_string(val) - 1;
     if (*end != '"')
         return NULL;
@@ -88,7 +79,7 @@ char *json_get(const char *json, const char *key)
     memcpy(out, val + 1, n);
     out[n] = '\0';
 
-    return out;
+    return json_unescape(out);
 }
 
 char *json_get_in(const char *json, const char *section, const char *key)
@@ -123,7 +114,7 @@ char *json_slurp(const char *path)
 
 const char *json_skip_string(const char *p)
 {
-    p++; /* opening quote */
+    p++;
     while (*p)
     {
         if (*p == '\\' && p[1])
@@ -136,10 +127,10 @@ const char *json_skip_string(const char *p)
     return p;
 }
 
-/* Bracket-matching extractor shared by json_array and json_object. */
-static char *extract(const char *doc, const char *key, char open_ch, char close_ch)
+// backet-matching extractor shared by json_array and json_object
+static char *extract(const char *json, const char *key, char open_ch, char close_ch)
 {
-    const char *k = strstr(doc, P("\"%s\"", key));
+    const char *k = strstr(json, P("\"%s\"", key));
     if (!k)
         return NULL;
 
@@ -147,8 +138,6 @@ static char *extract(const char *doc, const char *key, char open_ch, char close_
     if (!open)
         return NULL;
 
-    /* Depth, skipping strings: a value may contain a bracket, and stopping
-       at the first one would truncate the result. */
     int depth = 0;
     for (const char *p = open; *p; p++)
     {
@@ -173,19 +162,16 @@ static char *extract(const char *doc, const char *key, char open_ch, char close_
     return NULL;
 }
 
-char *json_array(const char *doc, const char *key)
+char *json_array(const char *json, const char *key)
 {
-    return extract(doc, key, '[', ']');
+    return extract(json, key, '[', ']');
 }
 
-char *json_object(const char *doc, const char *key)
+char *json_object(const char *json, const char *key)
 {
-    return extract(doc, key, '{', '}');
+    return extract(json, key, '{', '}');
 }
 
-/* Decodes JSON string escapes in place. cosign's "custom" attestation type
-   stores our whole statement as one escaped string under predicate.Data, so
-   it has to be unescaped before it can be parsed as JSON again. */
 char *json_unescape(char *s)
 {
     char *w = s;
@@ -198,16 +184,27 @@ char *json_unescape(char *s)
         }
         switch (*++r)
         {
-        case 'n': *w++ = '\n'; break;
-        case 't': *w++ = '\t'; break;
-        case 'r': *w++ = '\r'; break;
-        case 'b': *w++ = '\b'; break;
-        case 'f': *w++ = '\f'; break;
+        case 'n':
+            *w++ = '\n';
+            break;
+        case 't':
+            *w++ = '\t';
+            break;
+        case 'r':
+            *w++ = '\r';
+            break;
+        case 'b':
+            *w++ = '\b';
+            break;
+        case 'f':
+            *w++ = '\f';
+            break;
         case 'u': /* left as-is: nothing downstream reads non-ASCII fields */
             *w++ = '\\';
             *w++ = 'u';
             break;
-        default: *w++ = *r;
+        default:
+            *w++ = *r;
         }
     }
     *w = '\0';

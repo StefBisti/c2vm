@@ -334,9 +334,9 @@ int cmd_verify(int argc, char *argv[])
      */
     if (custom_stmt)
     {
-        /* cosign's "custom" type stores the predicate as an escaped string. */
-        char *data = json_get(custom_stmt, "Data");
-        char *inner = data ? json_unescape(data) : NULL;
+        /* cosign's "custom" type stores the predicate as an escaped string;
+           json_get unescapes it, so it parses as a document in its own right. */
+        char *inner = json_get(custom_stmt, "Data");
 
         char *layer = json_get_in(manifest, "layers", "digest");
         char *subj = inner ? json_get_in(inner, "subject", "sha256") : NULL;
@@ -367,7 +367,7 @@ int cmd_verify(int argc, char *argv[])
         free(subj);
         free(claimed);
         free(annotated);
-        free(data);
+        free(inner);
     }
 
     /* 6. Policy, over the SBOM that was actually signed. */

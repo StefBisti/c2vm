@@ -1,5 +1,6 @@
 #include "convert/ova.h"
 #include "core/run.h"
+#include "core/util.h"
 
 #include <errno.h>
 #include <stdio.h>

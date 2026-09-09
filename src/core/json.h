@@ -1,32 +1,28 @@
 #ifndef C2VM_JSON_H
 #define C2VM_JSON_H
 
+// escapes a string in order to embed it into json
 const char *J(const char *s);
+
+// gets a field's value, unescaped
 char *json_get(const char *json, const char *key);
 
-/* Searched from the section key onward */
+// gets a field's value from section onwards
 char *json_get_in(const char *json, const char *section, const char *key);
 
-/* Whole file into one malloc'd, NUL-terminated buffer, sized by stat.
-   For documents too big for read_file()'s up-front cap: SBOMs run to 8 MB
-   and grype reports to 30. Dies on any read error. */
+// reads a json file with malloc
 char *json_slurp(const char *path);
 
-/* Given a pointer at a string's opening quote, returns the byte after its
-   closing quote, honouring backslash escapes. A brace inside a description
-   or a CPE must not move a caller's depth counter. */
+// moves the pointer p from the start of the quote to the end
 const char *json_skip_string(const char *p);
 
-/* The text of a top-level array, brackets included, so a caller can embed
-   it verbatim in another document without parsing its elements. Caller
-   frees. NULL if the key is absent or the array never closes. */
-char *json_array(const char *doc, const char *key);
+// gets raw json array, brackets included
+char *json_array(const char *json, const char *key);
 
-/* Same, for an object value: c2vm verify lifts the SPDX document out of an
-   attestation's predicate this way. Caller frees. */
-char *json_object(const char *doc, const char *key);
+// gets raw json object, curly braces included
+char *json_object(const char *json, const char *key);
 
-/* Undoes JSON string escapes in place, returning s. */
+// undoes json string escapes
 char *json_unescape(char *s);
 
 #endif

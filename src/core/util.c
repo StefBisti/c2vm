@@ -1,12 +1,102 @@
 #include "core/util.h"
 
-#include "core/run.h"
-
+#include <errno.h>
 #include <limits.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
+
+bool dry_run = false;
+
+void step(const char *fmt, ...)
+{
+    fputs("\n==> ", stderr);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+}
+
+void die(const char *fmt, ...)
+{
+    fputs("c2vm: ", stderr);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+    exit(EXIT_FAILURE);
+}
+
+const char *P(const char *fmt, ...)
+{
+    char buf[PATH_MAX];
+
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+
+    char *s = strdup(buf);
+    if (!s)
+        die("out of memory");
+    return s;
+}
+
+char *read_file(const char *path, size_t max)
+{
+    FILE *f = fopen(path, "r");
+    if (!f)
+        die("cannot read %s: %s", path, strerror(errno));
+
+    char *buf = malloc(max + 1);
+    if (!buf)
+        die("out of memory");
+
+    size_t n = fread(buf, 1, max, f);
+    bool overflow = fgetc(f) != EOF;
+    fclose(f);
+
+    if (overflow)
+    {
+        free(buf);
+        die("%s is larger than %zu bytes", path, max);
+    }
+    buf[n] = '\0';
+
+    if (strlen(buf) != n)
+    {
+        free(buf);
+        die("%s contains a NUL byte", path);
+    }
+
+    while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r' || buf[n - 1] == ' ' || buf[n - 1] == '\t'))
+        buf[--n] = '\0';
+
+    return buf;
+}
+
+void write_file(const char *path, const char *fmt, ...)
+{
+    fprintf(stderr, dry_run ? "  would write: %s\n" : "  > %s\n", path);
+    if (dry_run)
+        return;
+
+    FILE *f = fopen(path, "w");
+    if (!f)
+        die("cannot write %s: %s", path, strerror(errno));
+
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+
+    if (fclose(f) != 0)
+        die("cannot close %s: %s", path, strerror(errno));
+}
 
 const char *basename_of(const char *path)
 {
@@ -101,7 +191,7 @@ char *base64_decode(const char *in, size_t *outlen)
     {
         int v = b64val((unsigned char)*p);
         if (v < 0)
-            continue; /* padding, newlines, whitespace */
+            continue; // padding, newlines, whitespace
         acc = (acc << 6) | (unsigned)v;
         bits += 6;
         if (bits >= 8)

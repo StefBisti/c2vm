@@ -1,5 +1,7 @@
 #include "core/run.h"
 
+#include "core/util.h"
+
 #include <errno.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -8,8 +10,6 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
-bool dry_run = false;
 
 #define MAX_ARGS 64
 
@@ -99,7 +99,7 @@ static int spawn(char *const argv[], char **out)
         }
         close(fds[0]);
         while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == ' '))
-            len--; /* blkid and skopeo both add a trailing newline */
+            len--; // remove trailing new lines
         buf[len] = '\0';
         *out = buf;
     }
@@ -111,7 +111,6 @@ static int spawn(char *const argv[], char **out)
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
 
-// run a command. Give me the exit code. I'll decide what to do.
 int run(const char *prog, ...)
 {
     char *argv[MAX_ARGS];
@@ -122,7 +121,6 @@ int run(const char *prog, ...)
     return spawn(argv, NULL);
 }
 
-// run a command. If it fails, kill the whole build.
 void run_ok(const char *prog, ...)
 {
     char *argv[MAX_ARGS];
@@ -136,7 +134,6 @@ void run_ok(const char *prog, ...)
         die("%s failed (exit %d)", prog, rc);
 }
 
-// run a command, hand me back what it printed
 char *run_capture(const char *prog, ...)
 {
     char *argv[MAX_ARGS];
@@ -157,7 +154,6 @@ int run_argv(char *const argv[])
     return spawn(argv, NULL);
 }
 
-/* Like run_capture, but for an argv built at runtime */
 int run_argv_capture(char *const argv[], char **out)
 {
     return spawn(argv, out);
@@ -168,104 +164,4 @@ void run_argv_ok(char *const argv[])
     int rc = spawn(argv, NULL);
     if (rc != 0)
         die("%s failed (exit %d)", argv[0], rc);
-}
-
-char *read_file(const char *path, size_t max)
-{
-    FILE *f = fopen(path, "r");
-    if (!f)
-        die("cannot read %s: %s", path, strerror(errno));
-
-    char *buf = malloc(max + 1);
-    if (!buf)
-        die("out of memory");
-
-    size_t n = fread(buf, 1, max, f);
-    bool overflow = fgetc(f) != EOF; /* anything left means it did not fit */
-    fclose(f);
-
-    if (overflow)
-    {
-        free(buf);
-        die("%s is larger than %zu bytes", path, max);
-    }
-    buf[n] = '\0';
-
-
-    if (strlen(buf) != n)
-    {
-        free(buf);
-        die("%s contains a NUL byte", path);
-    }
-
-    while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r' ||
-                     buf[n - 1] == ' ' || buf[n - 1] == '\t'))
-        buf[--n] = '\0';
-
-    return buf;
-}
-
-// write a file from a format string
-void write_file(const char *path, const char *fmt, ...)
-{
-    fprintf(stderr, dry_run ? "  would write: %s\n" : "  > %s\n", path);
-    if (dry_run)
-        return;
-
-    FILE *f = fopen(path, "w");
-    if (!f)
-        die("cannot write %s: %s", path, strerror(errno));
-
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(f, fmt, ap);
-    va_end(ap);
-
-    if (fclose(f) != 0)
-        die("cannot close %s: %s", path, strerror(errno));
-}
-
-// prints a section heading so build output is readable
-void step(const char *fmt, ...)
-{
-    fputs("\n==> ", stderr);
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    fputc('\n', stderr);
-}
-
-// print an error and quit. Cleanup runs automatically
-void die(const char *fmt, ...)
-{
-    fputs("c2vm: ", stderr);
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    fputc('\n', stderr);
-    exit(EXIT_FAILURE); /* atexit handler unwinds mounts and loop devices */
-}
-
-/*
- * Formats into fresh storage the process never frees. This used to hand back
- * a slot of a rotating pool, which is where three separate bugs came from:
- * any caller that held the pointer across a few more P() calls silently got
- * somebody else's string. c2vm is a short-lived CLI, so leaking a few hundred
- * kilobytes over one run is cheaper than a rule every caller has to remember.
- */
-const char *P(const char *fmt, ...)
-{
-    char buf[PATH_MAX];
-
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, sizeof buf, fmt, ap);
-    va_end(ap);
-
-    char *s = strdup(buf);
-    if (!s)
-        die("out of memory");
-    return s;
 }

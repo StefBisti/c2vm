@@ -1,26 +1,25 @@
 #ifndef C2VM_RUN_H
 #define C2VM_RUN_H
 
-#include <stdbool.h>
-#include <stddef.h>
+// first three take a NULL-terminated argument list: run("parted", "-s", disk, NULL)
+// the other three, take an in-memory array of arguments
 
-extern bool dry_run;
+// returns exit status
+int run(const char *prog, ...);
 
-/* these take a NULL-terminated argument list: run("parted", "-s", disk, NULL) */
-int run(const char *prog, ...);           /* returns exit status */
-void run_ok(const char *prog, ...);       /* dies if the command fails */
-char *run_capture(const char *prog, ...); /* trimmed stdout, caller frees */
+// dies if command fails
+void run_ok(const char *prog, ...);
 
-void write_file(const char *path, const char *fmt, ...);
-char *read_file(const char *path, size_t max); /* whole file, caller frees */
-void step(const char *fmt, ...); /* progress heading */
-void die(const char *fmt, ...);  /* error + cleanup + exit(1) */
+// returned stdout, caller frees
+char *run_capture(const char *prog, ...);
 
-/* Same, but for argument lists built at runtime (e.g. a package list). */
+// takes argument list, returns exit status
 int run_argv(char *const argv[]);
-void run_argv_ok(char *const argv[]);
-int run_argv_capture(char *const argv[], char **out);
 
-const char *P(const char *fmt, ...);
+// takes argument list, dies if command fails
+void run_argv_ok(char *const argv[]);
+
+// takes argument list, returns exit status, out = captured stdout
+int run_argv_capture(char *const argv[], char **out);
 
 #endif

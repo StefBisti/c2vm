@@ -1,5 +1,6 @@
 #include "core/cleanup.h"
 #include "core/run.h"
+#include "core/util.h"
 
 #include <limits.h>
 #include <signal.h>
@@ -104,20 +105,14 @@ void cleanup_run(void)
                 usleep(250000);
             }
             if (run("findmnt", "-rn", a->path, NULL) == 0)
-                fprintf(stderr,
-                        "c2vm: warning: %s is still mounted; "
-                        "run: guestunmount %s\n",
-                        a->path, a->path);
+                fprintf(stderr, "c2vm: warning: %s is still mounted; run: guestunmount %s\n", a->path, a->path);
             break;
         case ACT_LOSETUP:
             run("udevadm", "settle", NULL);
             run("losetup", "-d", a->path, NULL);
             run("udevadm", "settle", NULL);
             if (loop_attached(a->path))
-                fprintf(stderr,
-                        "c2vm: warning: %s is still attached; "
-                        "run: sudo losetup -d %s\n",
-                        a->path, a->path);
+                fprintf(stderr, "c2vm: warning: %s is still attached; run: sudo losetup -d %s\n", a->path, a->path);                        
             break;
         case ACT_KILL:
             if (a->pid > 0 && kill(a->pid, SIGTERM) == 0)

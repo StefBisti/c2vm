@@ -45,7 +45,6 @@ static void scan_usage(void)
         stderr);
 }
 
-
 static void grype_scan(const struct scan_opts *s, const char *grype, const char *name)
 {
     step("grype %s", name);
@@ -105,11 +104,10 @@ static void syft_scan(const struct scan_opts *s, const char *syft, const char *t
     run_argv_ok(argv);
 }
 
-/* Returns the recorded sha256 for this artifact. Caller frees. */
+// returns the recorded sha256 for this artifact
 static char *verify_artifact(const struct scan_opts *s)
 {
     const char *name = basename_of(s->artifact);
-
     char *want = json_get_in(s->meta, name, "sha256");
     if (!want)
     {
@@ -189,6 +187,7 @@ static void write_tooling(const struct scan_opts *s, const char *syft,
                J(image), J(digest));
 }
 
+// parse options
 static int parse_opts(int argc, char *argv[], struct scan_opts *s)
 {
     s->artifact = NULL;
@@ -271,11 +270,11 @@ static int parse_opts(int argc, char *argv[], struct scan_opts *s)
 
     if (access(s->artifact, R_OK) != 0)
     {
-        fprintf(stderr, "c2vm scan: cannot read %s: %s\n",
-                s->artifact, strerror(errno));
+        fprintf(stderr, "c2vm scan: cannot read %s: %s\n", s->artifact, strerror(errno));
         return EXIT_USAGE;
     }
 
+    // syft would report zero packages if it scans a .ova tar
     const char *dot = strrchr(basename_of(s->artifact), '.');
     if (dot && !strcmp(dot, ".ova"))
     {
@@ -288,6 +287,7 @@ static int parse_opts(int argc, char *argv[], struct scan_opts *s)
     return 0;
 }
 
+// main function
 int cmd_scan(int argc, char *argv[])
 {
     struct scan_opts opts;
@@ -301,9 +301,7 @@ int cmd_scan(int argc, char *argv[])
     cleanup_init();
 
     const char *syft = tool_path("syft", opts.syft);
-    const char *grype = opts.skip_cve
-                            ? NULL
-                            : tool_path("grype", opts.grype);
+    const char *grype = opts.skip_cve ? NULL : tool_path("grype", opts.grype);
 
     opts.meta = read_file(P("%s/metadata/build.json", opts.outdir), 65536);
 
@@ -323,11 +321,6 @@ int cmd_scan(int argc, char *argv[])
         die("cannot read a version out of `%s version -o json`", syft);
     fprintf(stderr, "  syft:     %s (spdx schema %s)\n", syft_ver, syft_schema ? syft_schema : "?");
 
-    /*
-     * `grype db status` rather than the report's own descriptor: the
-     * descriptor sits at the end of a file that runs to tens of megabytes,
-     * and this returns the same two fields in a few hundred bytes.
-     */
     char *db_json = NULL, *grype_ver = NULL, *db_built = NULL, *db_schema = NULL;
     if (grype)
     {
@@ -379,9 +372,7 @@ int cmd_scan(int argc, char *argv[])
     if (grype)
         grype_scan(&opts, grype, "disk");
 
-    write_tooling(&opts, syft, syft_ver, syft_schema ? syft_schema : "",
-                  grype_ver, db_built, db_schema,
-                  image, digest, artifact_sha);
+    write_tooling(&opts, syft, syft_ver, syft_schema ? syft_schema : "", grype_ver, db_built, db_schema, image, digest, artifact_sha);
 
     step("done");
     if (!opts.skip_source)
