@@ -41,7 +41,7 @@ static void usage(FILE *out)
         "\n"
         "commands:\n"
         "  build <image-ref>          Build a bootable disk from a container image\n"
-        "  boot-test <artifact>       Boot the artifact headless and assert the guest came up\n"
+        "  boot-test <artifact>       Boot the artifact headless asserts the guest came up and checks metadata\n"
         "  scan <artifact>            Generate an SBOM of a built disk and scan it for CVEs\n"
         "  diff <sbom-a> <sbom-b>     Report the package delta between two SBOMs\n"
         "  cve <report-a> <report-b>  Report the vulnerability delta between two grype reports\n"

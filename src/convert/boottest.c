@@ -14,8 +14,32 @@
 #include <time.h>
 #include <unistd.h>
 
-static const char *OVMF_CODE = "/usr/share/OVMF/OVMF_CODE_4M.fd";
-static const char *OVMF_VARS = "/usr/share/OVMF/OVMF_VARS_4M.fd";
+// no standard location, find them
+static const char *OVMF_CODE, *OVMF_VARS;
+
+// picks the first UEFI firmware if finds
+static void find_ovmf(void)
+{
+    static const char *CANDIDATES[][2] = {
+        {"/usr/share/OVMF/OVMF_CODE_4M.fd",     "/usr/share/OVMF/OVMF_VARS_4M.fd"},
+        {"/usr/share/OVMF/OVMF_CODE.fd",        "/usr/share/OVMF/OVMF_VARS.fd"},
+        {"/usr/share/edk2/ovmf/OVMF_CODE.fd",   "/usr/share/edk2/ovmf/OVMF_VARS.fd"},
+        {"/usr/share/edk2/x64/OVMF_CODE.4m.fd", "/usr/share/edk2/x64/OVMF_VARS.4m.fd"},
+        {"/usr/share/qemu/edk2-x86_64-code.fd", "/usr/share/qemu/edk2-i386-vars.fd"},
+    };
+
+    for (size_t i = 0; i < NELEMS(CANDIDATES); i++)
+        if (access(CANDIDATES[i][0], R_OK) == 0 && access(CANDIDATES[i][1], R_OK) == 0)
+        {
+            OVMF_CODE = CANDIDATES[i][0];
+            OVMF_VARS = CANDIDATES[i][1];
+            return;
+        }
+
+    die("no OVMF firmware found; install it "
+        "(Debian/Ubuntu: apt install ovmf, Fedora: dnf install edk2-ovmf, "
+        "Arch: pacman -S edk2-ovmf)");
+}
 
 struct test_opts
 {
@@ -24,6 +48,7 @@ struct test_opts
     const char *user;
     const char *outdir;
     const char *port;
+    const char *seed; /* cidata ISO, for disks that ship without credentials */
     int timeout;
     bool kvm;
     char *meta; /* metadata/build.json, read once */
@@ -38,24 +63,25 @@ static void test_usage(void)
         "  --user <name>       guest account (default: the one build.json records)\n"
         "  --out <dir>         directory holding metadata/build.json (default: build)\n"
         "  --port <n>          host port forwarded to guest 22 (default: 2222)\n"
+        "  --seed <iso>        cidata ISO supplying the guest account\n"
         "  --timeout <sec>     hard limit, tripled without KVM (default: 180)\n",
         stderr);
 }
 
+// checks if s ends with suffix
 static bool has_suffix(const char *s, const char *suffix)
 {
     size_t n = strlen(s), m = strlen(suffix);
     return n >= m && !strcmp(s + n - m, suffix);
 }
 
+// maps a file extension to a QEMU disk format
 static const char *disk_format(const char *path)
 {
     const char *dot = strrchr(path, '.');
     if (!dot)
     {
-        fprintf(stderr, "c2vm boot-test: cannot tell the format of %s "
-                        "from its name\n",
-                path);
+        fprintf(stderr, "c2vm boot-test: cannot tell the format of %s from its name\n", path);
         return NULL;
     }
 
@@ -70,6 +96,7 @@ static const char *disk_format(const char *path)
     return NULL;
 }
 
+// extracts disk.vmdk from an OVA and returns a qcow2 overlay backed by it
 static const char *unpack_ova(const struct test_opts *t)
 {
     step("extracting the disk from %s", t->artifact);
@@ -86,8 +113,10 @@ static const char *unpack_ova(const struct test_opts *t)
     return P("%s/overlay.qcow2", dir);
 }
 
+// forks a headless QEMU booting the disk, returns its pid
 static pid_t spawn_qemu(const struct test_opts *t, const char *disk, const char *logpath)
 {
+    find_ovmf();
     const char *vars = P("%s/boot-test-VARS.fd", t->outdir);
     run_ok("cp", OVMF_VARS, vars, NULL);
     run_ok("rm", "-f", logpath, NULL);
@@ -124,6 +153,12 @@ static pid_t spawn_qemu(const struct test_opts *t, const char *disk, const char 
     argv[n++] = "-drive";
     argv[n++] = (char *)P("file=%s,format=%s,if=virtio", disk, disk_format(disk));
 
+    if (t->seed)
+    {
+        argv[n++] = "-drive";
+        argv[n++] = (char *)P("file=%s,media=cdrom", t->seed);
+    }
+
     argv[n++] = "-netdev";
     argv[n++] = (char *)P("user,id=net0,hostfwd=tcp::%s-:22", t->port);
     argv[n++] = "-device";
@@ -159,6 +194,7 @@ static pid_t spawn_qemu(const struct test_opts *t, const char *disk, const char 
     return pid;
 }
 
+// fills argv with a non-interactive ssh command line for the guest
 static void ssh_argv(const struct test_opts *t, const char *cmd, char *argv[])
 {
     size_t n = 0;
@@ -212,6 +248,7 @@ static int ssh_try(const struct test_opts *t, const char *cmd)
     return rc;
 }
 
+// runs ssh command and returns its stdout, dying if it fails
 static char *ssh_out(const struct test_opts *t, const char *cmd)
 {
     char *argv[24];
@@ -225,6 +262,7 @@ static char *ssh_out(const struct test_opts *t, const char *cmd)
     return out;
 }
 
+// serial log contains "needle"
 static bool serial_has(const char *logpath, const char *needle)
 {
     FILE *f = fopen(logpath, "r");
@@ -234,13 +272,16 @@ static bool serial_has(const char *logpath, const char *needle)
     char line[4096];
     bool found = false;
     while (!found && fgets(line, sizeof line, f))
+    {
         if (strstr(line, needle))
             found = true;
+    }
 
     fclose(f);
     return found;
 }
 
+// dumps the tail of the serial log
 static void print_tail(const char *logpath, int lines)
 {
     if (access(logpath, R_OK) != 0)
@@ -254,6 +295,7 @@ static void print_tail(const char *logpath, int lines)
     fputs("--- end ---\n", stderr);
 }
 
+// polls until the guest answers ssh, dies on panic, qemu exit or timeout.
 static void wait_for_boot(const struct test_opts *t, pid_t qemu, const char *logpath)
 {
     step("waiting for the guest (timeout %ds, %s)", t->timeout, t->kvm ? "kvm" : "tcg");
@@ -293,10 +335,11 @@ static void wait_for_boot(const struct test_opts *t, pid_t qemu, const char *log
     }
 
     print_tail(logpath, 50);
-    fprintf(stderr, "c2vm: timed out after %ds (serial login: %s)\n",  t->timeout, saw_login ? "yes" : "no");
+    fprintf(stderr, "c2vm: timed out after %ds (serial login: %s)\n", t->timeout, saw_login ? "yes" : "no");
     exit(EXIT_BOOT_TIMEOUT);
 }
 
+// reports one assertion and dies if it failed
 static void check(const char *what, bool ok, const char *detail)
 {
     fprintf(stderr, "  [%s] %-22s %s\n", ok ? "ok" : "FAIL", what, detail);
@@ -304,6 +347,7 @@ static void check(const char *what, bool ok, const char *detail)
         die("assertion failed: %s", what);
 }
 
+// asserts the running guest matches what build.json recorded
 static void assert_guest(const struct test_opts *t)
 {
     step("checking the guest");
@@ -314,7 +358,6 @@ static void assert_guest(const struct test_opts *t)
 
     if (!want_uuid || !kernel_pkg || !want_kver)
         die("%s/metadata/build.json is missing fields boot-test needs; rebuild with this version of c2vm", t->outdir);
-
 
     char *state = ssh_out(t, "timeout 60 systemctl is-system-running --wait || true");
     check("systemd state", !strcmp(state, "running") || !strcmp(state, "degraded"), state);
@@ -341,6 +384,7 @@ static void assert_guest(const struct test_opts *t)
     free(uname);
 }
 
+// parses argv into test_opts and validates every path and value
 static int parse_opts(int argc, char *argv[], struct test_opts *t)
 {
     t->artifact = NULL;
@@ -349,6 +393,7 @@ static int parse_opts(int argc, char *argv[], struct test_opts *t)
     t->meta = NULL;
     t->outdir = "build";
     t->port = "2222";
+    t->seed = NULL;
     t->timeout = 180;
 
     for (int i = 0; i < argc; i++)
@@ -378,6 +423,8 @@ static int parse_opts(int argc, char *argv[], struct test_opts *t)
                 t->outdir = v;
             else if (!strcmp(a, "--port"))
                 t->port = v;
+            else if (!strcmp(a, "--seed"))
+                t->seed = v;
             else if (!strcmp(a, "--timeout"))
                 t->timeout = atoi(v);
             else
@@ -409,6 +456,11 @@ static int parse_opts(int argc, char *argv[], struct test_opts *t)
         return EXIT_USAGE;
     }
 
+    if(has_suffix(t->ssh_key, ".pub")) {
+        fprintf(stderr, "c2vm boot-test: --ssh-key wants the private key, not %s\n", t->ssh_key);
+        return EXIT_USAGE;
+    }
+
     if (t->timeout <= 0 || t->timeout > 86400)
     {
         fprintf(stderr, "c2vm boot-test: --timeout must be 1..86400\n");
@@ -427,12 +479,29 @@ static int parse_opts(int argc, char *argv[], struct test_opts *t)
                 t->ssh_key, strerror(errno));
         return EXIT_USAGE;
     }
+
+    // ssh runs with BatchMode=yes and cannot prompt
+    char *probe[] = {"sh", "-c",
+                     "ssh-keygen -y -P '' -f \"$1\" </dev/null >/dev/null 2>&1",
+                     "sh", (char *)t->ssh_key, NULL};
+    char *pub = NULL;
+    int locked = run_argv_capture(probe, &pub);
+    free(pub);
+    if (locked != 0)
+    {
+        fprintf(stderr, "c2vm boot-test: %s is passphrase-protected; "
+                        "ssh cannot prompt for it\n",
+                t->ssh_key);
+        return EXIT_USAGE;
+    }
+    
     if (!has_suffix(t->artifact, ".ova") && !disk_format(t->artifact))
         return EXIT_USAGE;
 
     return 0;
 }
 
+// boots the artifact in QEMU and checks the live guest against build.json
 int cmd_boot_test(int argc, char *argv[])
 {
     struct test_opts t;
@@ -444,14 +513,10 @@ int cmd_boot_test(int argc, char *argv[])
     if (!t.kvm)
     {
         t.timeout *= 3;
-        fprintf(stderr,
-                "c2vm: warning: /dev/kvm unavailable, falling back to tcg;\n"
-                "               timeout raised to %ds\n",
-                t.timeout);
+        fprintf(stderr, "c2vm: warning: /dev/kvm unavailable, falling back to tcg;\ntimeout raised to %ds", t.timeout);
     }
 
     t.meta = read_file(P("%s/metadata/build.json", t.outdir), 65536);
-
     if (!t.user)
     {
         t.user = json_get_in(t.meta, "flags", "user");
