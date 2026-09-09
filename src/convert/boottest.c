@@ -513,7 +513,7 @@ int cmd_boot_test(int argc, char *argv[])
     if (!t.kvm)
     {
         t.timeout *= 3;
-        fprintf(stderr, "c2vm: warning: /dev/kvm unavailable, falling back to tcg;\ntimeout raised to %ds", t.timeout);
+        warn("/dev/kvm unavailable, falling back to tcg; timeout raised to %ds", t.timeout);
     }
 
     t.meta = read_file(P("%s/metadata/build.json", t.outdir), 65536);

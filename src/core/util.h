@@ -20,6 +20,9 @@ void step(const char *fmt, ...);
 // error + cleanup + exit(1)
 void die(const char *fmt, ...);
 
+// same prefix as die, but the run carries on
+void warn(const char *fmt, ...);
+
 // formats into fresh storage the process never frees, convenient
 const char *P(const char *fmt, ...);
 

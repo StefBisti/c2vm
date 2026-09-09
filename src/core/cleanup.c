@@ -22,7 +22,7 @@ enum action_kind
 struct action
 {
     enum action_kind kind;
-    char path[4096];
+    char path[PATH_MAX];
     pid_t pid;
 };
 
@@ -44,23 +44,22 @@ static struct action *push(enum action_kind kind, const char *path)
 }
 
 void cleanup_push_umount(const char *path) { push(ACT_UMOUNT, path); }
+
 void cleanup_push_losetup(const char *dev) { push(ACT_LOSETUP, dev); }
 
-/* guestmount is FUSE: umount(8) is the wrong tool and the FUSE process
-   outlives the request, so this needs its own action. */
 void cleanup_push_guestunmount(const char *path) { push(ACT_GUESTUNMOUNT, path); }
 
-/* A boot test that dies mid-run must not leave a VM holding the disk. */
 void cleanup_push_kill(pid_t pid, const char *what) { push(ACT_KILL, what)->pid = pid; }
 
 void cleanup_drop_kill(pid_t pid)
 {
     for (size_t i = 0; i < action_count; i++)
+    {
         if (actions[i].kind == ACT_KILL && actions[i].pid == pid)
             actions[i].pid = -1;
+    }
 }
 
-/* Cheaper and quieter than shelling out to losetup just to query. */
 static bool loop_attached(const char *dev)
 {
     const char *name = strrchr(dev, '/');
@@ -72,9 +71,6 @@ static bool loop_attached(const char *dev)
     return access(path, F_OK) == 0;
 }
 
-/*
- * Drains the stack, so calling it twice is harmless
- */
 void cleanup_run(void)
 {
     if (action_count > 0)
@@ -86,33 +82,27 @@ void cleanup_run(void)
         switch (a->kind)
         {
         case ACT_UMOUNT:
-            if (run("umount", "-R", a->path, NULL) != 0)
-                run("umount", "-R", "-l", a->path, NULL);
+            if (run("umount", "-R", a->path, NULL) != 0 &&
+                run("umount", "-R", "-l", a->path, NULL) != 0)
+                warn("%s could not be unmounted; run: sudo umount -R %s", a->path, a->path);
             break;
         case ACT_GUESTUNMOUNT:
-            /*
-             * --retry rides out the window where the kernel still has the
-             * FUSE mount busy. guestunmount can also return before the
-             * process has actually gone, so confirm rather than assume:
-             * a lingering appliance keeps the disk image open and the next
-             * scan then reads a file another process still holds.
-             */
             run("guestunmount", "--retry=5", a->path, NULL);
             for (int i = 0; i < 20; i++)
             {
                 if (run("findmnt", "-rn", a->path, NULL) != 0)
-                    break; /* findmnt fails => nothing mounted there */
+                    break; // nothing mounted
                 usleep(250000);
             }
             if (run("findmnt", "-rn", a->path, NULL) == 0)
-                fprintf(stderr, "c2vm: warning: %s is still mounted; run: guestunmount %s\n", a->path, a->path);
+                warn("%s is still mounted; run: guestunmount %s", a->path, a->path);
             break;
         case ACT_LOSETUP:
             run("udevadm", "settle", NULL);
             run("losetup", "-d", a->path, NULL);
             run("udevadm", "settle", NULL);
             if (loop_attached(a->path))
-                fprintf(stderr, "c2vm: warning: %s is still attached; run: sudo losetup -d %s\n", a->path, a->path);                        
+                warn("%s is still attached; run: sudo losetup -d %s", a->path, a->path);
             break;
         case ACT_KILL:
             if (a->pid > 0 && kill(a->pid, SIGTERM) == 0)
@@ -138,7 +128,6 @@ void cleanup_run(void)
         }
     }
 }
-
 
 static void on_signal(int sig)
 {

@@ -601,17 +601,15 @@ static void configure_cloud_init(const struct build_opts *o)
                  "      password: \"%s\"\n",
                  pwhash);
 
-        fprintf(stderr,
-                "c2vm: warning: --root-password sets a root password on a\n"
-                "               distributable image. It is hashed and expired on\n"
-                "               first login, and SSH password authentication stays\n"
-                "               off, so it reaches only the serial console.\n");
+        warn("--root-password sets a root password on a distributable\n"
+             "               image. It is hashed and expired on first login, and\n"
+             "               SSH password authentication stays off, so it reaches\n"
+             "               only the serial console.");
     }
 
     if (!o->ssh_key && !o->pw_file)
-        fprintf(stderr,
-                "c2vm: warning: no --ssh-key and no --root-password: the guest\n"
-                "               will boot with no way to log in.\n");
+        warn("no --ssh-key and no --root-password: the guest will boot\n"
+             "               with no way to log in.");
 
     write_file(P("%s/user-data", seed),
                "#cloud-config\n"

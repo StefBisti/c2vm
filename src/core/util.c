@@ -31,6 +31,16 @@ void die(const char *fmt, ...)
     exit(EXIT_FAILURE);
 }
 
+void warn(const char *fmt, ...)
+{
+    fputs("c2vm: warning: ", stderr);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+}
+
 const char *P(const char *fmt, ...)
 {
     char buf[PATH_MAX];
