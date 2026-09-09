@@ -17,7 +17,7 @@
 #include <unistd.h>
 #include <crypt.h>
 
-/* Everything the conversion adds that a container image does not have. */
+// Everything the conversion must add
 static const char *BASE_PACKAGES[] = {
     "initramfs-tools",
     "grub-efi-amd64",
@@ -34,7 +34,7 @@ static const char *BASE_PACKAGES[] = {
     "cloud-init",
 };
 
-/* Phase 0: without these in the initramfs the guest cannot find its root disk. */
+// Without these in the initramfs the guest cannot find its root disk
 static const char *VIRTIO_MODULES =
     "virtio_blk\n"
     "virtio_pci\n"
@@ -59,11 +59,11 @@ struct build_opts
     char mnt[PATH_MAX];
     char root_uuid[64]; /* filled in by write_guest_config */
 
-    /* Read while the chroot still exists, used once it is gone. */
     char kver[64]; // kernel version
     char gver[64]; // grub version
 };
 
+// build options contain the "want" format. Ex. qcow,ova contains ova
 static bool has_format(const struct build_opts *o, const char *want)
 {
     const char *p = o->format;
@@ -91,7 +91,7 @@ static void build_usage(void)
         "  --packages <list>      extra packages, comma-separated\n"
         "  --kernel <pkg>         kernel package (default: linux-image-virtual)\n"
         "  --fstype <fs>          root filesystem (default: ext4)\n"
-        "  --ssh-key <path>       authorized key for root\n"
+        "  --ssh-key <path>       authorized key for default user\n"
         "  --out <dir>            output directory (default: build)\n"
         "  --user <name>          default user account (default: c2vm)\n"
         "  --root-password <file> file holding a root password, hashed\n"
@@ -101,19 +101,20 @@ static void build_usage(void)
         stderr);
 }
 
+// is file readable
 static bool readable(const char *flag, const char *path)
 {
     FILE *f = fopen(path, "r");
     if (!f)
     {
-        fprintf(stderr, "c2vm build: %s: cannot read %s: %s\n",
-                flag, path, strerror(errno));
+        fprintf(stderr, "c2vm build: %s: cannot read %s: %s\n", flag, path, strerror(errno));
         return false;
     }
     fclose(f);
     return true;
 }
 
+// parses arguments
 static int parse_opts(int argc, char *argv[], struct build_opts *o)
 {
     o->image = NULL;
@@ -153,29 +154,29 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
 
         if (a[0] == '-')
         {
-            const char **whereToWriteTheValue = NULL;
+            const char **dst = NULL;
             if (!strcmp(a, "--format"))
-                whereToWriteTheValue = &o->format;
+                dst = &o->format;
             else if (!strcmp(a, "--size"))
-                whereToWriteTheValue = &o->size;
+                dst = &o->size;
             else if (!strcmp(a, "--hostname"))
-                whereToWriteTheValue = &o->hostname;
+                dst = &o->hostname;
             else if (!strcmp(a, "--packages"))
-                whereToWriteTheValue = &o->packages;
+                dst = &o->packages;
             else if (!strcmp(a, "--kernel"))
-                whereToWriteTheValue = &o->kernel;
+                dst = &o->kernel;
             else if (!strcmp(a, "--fstype"))
-                whereToWriteTheValue = &o->fstype;
+                dst = &o->fstype;
             else if (!strcmp(a, "--ssh-key"))
-                whereToWriteTheValue = &o->ssh_key;
+                dst = &o->ssh_key;
             else if (!strcmp(a, "--out"))
-                whereToWriteTheValue = &o->outdir;
+                dst = &o->outdir;
             else if (!strcmp(a, "--user"))
-                whereToWriteTheValue = &o->user;
+                dst = &o->user;
             else if (!strcmp(a, "--root-password"))
-                whereToWriteTheValue = &o->pw_file;
+                dst = &o->pw_file;
             else if (!strcmp(a, "--backend"))
-                whereToWriteTheValue = &o->backend;
+                dst = &o->backend;
 
             else
             {
@@ -188,7 +189,7 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
                 fprintf(stderr, "c2vm build: %s needs a value\n", a);
                 return EXIT_USAGE;
             }
-            *whereToWriteTheValue = argv[++i];
+            *dst = argv[++i];
             continue;
         }
 
@@ -214,8 +215,7 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
     }
     if (strcmp(o->backend, "native") != 0)
     {
-        fprintf(stderr, "c2vm build: unknown backend '%s' (only: native)\n",
-                o->backend);
+        fprintf(stderr, "c2vm build: unknown backend '%s' (only: native)\n", o->backend);
         return EXIT_USAGE;
     }
 
@@ -229,17 +229,23 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
 
 #pragma region STAGES
 
-// deletes then recreates o->outdir
+// deletes, unmounts, then recreates o->outdir with mnt and metadata
 static void prepare_outdir(const struct build_opts *o)
 {
+    // safety net in order to not rm -rf soemthing wrong
+    if (!*o->outdir || !strcmp(o->outdir, "/"))
+        die("--out '%s' refused", o->outdir);
+    if (access(o->outdir, F_OK) == 0 && access(P("%s/metadata", o->outdir), F_OK) != 0)
+        die("%s exists but is not a c2vm output directory (no metadata/)", o->outdir);
+
     step("preparing %s", o->outdir);
-    run("umount", "-R", P("%s/mnt", o->outdir), NULL); /* may fail; fine */
+    run("umount", "-R", P("%s/mnt", o->outdir), NULL);
     run_ok("rm", "-rf", o->outdir, NULL);
     run_ok("mkdir", "-p", P("%s/metadata", o->outdir), NULL);
     run_ok("mkdir", "-p", P("%s/mnt", o->outdir), NULL);
 }
 
-// populates build/rootfs from the image
+// populates build/rootfs from the oci image using scripts/extract-rootfs.sh and writes metadata/source.json
 static void extract_rootfs(const struct build_opts *o)
 {
     step("extracting %s", o->image);
@@ -268,7 +274,7 @@ static void extract_rootfs(const struct build_opts *o)
     free(host);
 }
 
-// creates and partitions the raw disk file. No loop device involved yet
+// creates and gpt-partitions the raw disk file. No loop device involved yet
 static void create_disk(const struct build_opts *o)
 {
     char disk[PATH_MAX];
@@ -284,7 +290,7 @@ static void create_disk(const struct build_opts *o)
     run_ok("parted", "-s", disk, "mkpart", "root", o->fstype, "513MiB", "100%", NULL);
 }
 
-/* Returns the loop device, e.g. "/dev/loop12". Caller frees. */
+// creates the loop device ex. /dev/[loopX], makes [loopXp1] as esp vfat, then [loopXp2] root ext4
 static char *attach_and_format(const struct build_opts *o)
 {
     step("attaching and formatting");
@@ -298,6 +304,7 @@ static char *attach_and_format(const struct build_opts *o)
     return loop;
 }
 
+// copies rootfs on the disk and binds
 static void mount_all(const struct build_opts *o, const char *loop)
 {
     step("mounting on %s", o->mnt);
@@ -319,9 +326,11 @@ static void mount_all(const struct build_opts *o, const char *loop)
         cleanup_push_umount(target);
     }
 
+    // dns
     run_ok("cp", "/etc/resolv.conf", P("%s/etc/resolv.conf", o->mnt), NULL);
 }
 
+// fstab, hostname, hosts
 static void write_guest_config(struct build_opts *o, const char *loop)
 {
     step("writing guest configuration");
@@ -341,18 +350,17 @@ static void write_guest_config(struct build_opts *o, const char *loop)
     snprintf(o->root_uuid, sizeof o->root_uuid, "%s", root_uuid);
 
     write_file(P("%s/etc/hostname", o->mnt), "%s\n", o->hostname);
-    write_file(P("%s/etc/hosts", o->mnt), "127.0.0.1\tlocalhost\n"
-                                          "127.0.1.1\t%s\n",
-               o->hostname);
+    write_file(P("%s/etc/hosts", o->mnt), "127.0.0.1\tlocalhost\n127.0.1.1\t%s\n", o->hostname);
 
     free(root_uuid);
     free(esp_uuid);
 }
 
-/* chroot build/mnt env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-   --no-install-recommends linux-image-virtual initramfs-tools grub-efi-amd64 \
-   systemd systemd-sysv init udev dbus netplan.io iproute2 ca-certificates \
-   openssh-server sudo <anything from --packages> */
+/* this function is equivalent to:
+    chroot build/mnt env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    --no-install-recommends linux-image-virtual initramfs-tools grub-efi-amd64 \
+    systemd systemd-sysv init udev dbus netplan.io iproute2 ca-certificates \
+    openssh-server sudo <anything from --packages> */
 static void apt_install(const struct build_opts *o)
 {
     char *argv[128];
@@ -390,7 +398,6 @@ static void apt_install(const struct build_opts *o)
 static void install_system(struct build_opts *o)
 {
     step("installing kernel, bootloader and init");
-
     run_ok("chroot", o->mnt, "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update", NULL);
 
     char *before = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Package}\t${Version}\n", NULL);
@@ -413,8 +420,7 @@ static void install_system(struct build_opts *o)
     run_ok("chroot", o->mnt, "update-grub", NULL);
 
     run_ok("mkdir", "-p", P("%s/boot/efi/boot/grub", o->mnt), NULL);
-    write_file(P("%s/boot/efi/boot/grub/grub.cfg", o->mnt), "set prefix=($root)/boot/grub\n"
-                                                            "configfile $prefix/grub.cfg\n");
+    write_file(P("%s/boot/efi/boot/grub/grub.cfg", o->mnt), "set prefix=($root)/boot/grub\nconfigfile $prefix/grub.cfg\n");
 
     run_ok("chroot", o->mnt, "systemctl", "enable", "serial-getty@ttyS0.service", NULL);
 
@@ -422,8 +428,7 @@ static void install_system(struct build_opts *o)
     write_file(P("%s/metadata/packages-after.txt", o->outdir), "%s\n", after);
     free(after);
 
-    /* Read here rather than in write_metadata: build.json is written after
-       the disk has been converted now, by which point the chroot is gone. */
+    // build.json is written after the disk has been converted, by which point the chroot is gone
     char *kver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", o->kernel, NULL);
     char *gver = run_capture("chroot", o->mnt, "dpkg-query", "-W", "-f=${Version}", "grub-efi-amd64", NULL);
     snprintf(o->kver, sizeof o->kver, "%s", kver);
@@ -438,8 +443,7 @@ static void install_system(struct build_opts *o)
 
 static char *hash_password(const char *plain)
 {
-    static const char ALPHABET[] =
-        "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    static const char ALPHABET[] = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
     unsigned char raw[16];
     FILE *f = fopen("/dev/urandom", "r");
@@ -461,6 +465,7 @@ static char *hash_password(const char *plain)
     return strdup(hash);
 }
 
+// read the source_digest field from metadata/source.json
 static char *read_source_digest(const struct build_opts *o)
 {
     if (dry_run)
@@ -534,6 +539,7 @@ static void enable_cloud_init(const struct build_opts *o)
         run("chroot", o->mnt, "systemctl", "enable", CI_UNITS[i], NULL);
 }
 
+// first-boot identity
 static void configure_cloud_init(const struct build_opts *o)
 {
     step("seeding cloud-init");
@@ -548,10 +554,7 @@ static void configure_cloud_init(const struct build_opts *o)
     time_t now = time(NULL);
     strftime(stamp, sizeof stamp, "%Y%m%d%H%M%S", gmtime(&now));
 
-    write_file(P("%s/meta-data", seed),
-               "instance-id: iid-c2vm-%s\n"
-               "local-hostname: %s\n",
-               stamp, o->hostname);
+    write_file(P("%s/meta-data", seed), "instance-id: iid-c2vm-%s\nlocal-hostname: %s\n", stamp, o->hostname);
 
     /* Matched by prefix: the guest names its interface from PCI topology, so
        the name is not known at build time. */
@@ -637,6 +640,7 @@ static void configure_cloud_init(const struct build_opts *o)
     reset_identity(o);
 }
 
+// builds the artifacts array for build.json
 static void artifact_list(const struct build_opts *o, char *out, size_t cap)
 {
     static const char *NAMES[] = {"disk.raw", "disk.qcow2", "disk.ova"};
@@ -673,6 +677,7 @@ static void artifact_list(const struct build_opts *o, char *out, size_t cap)
     }
 }
 
+// writes metadata/build.json
 static void write_metadata(const struct build_opts *o)
 {
     step("recording build metadata");
@@ -684,8 +689,7 @@ static void write_metadata(const struct build_opts *o)
     artifact_list(o, arts, sizeof arts);
 
     if (!dry_run && strncmp(digest, "sha256:", 7) != 0)
-        die("%s/metadata/source.json holds no digest: %.60s",
-            o->outdir, digest);
+        die("%s/metadata/source.json holds no digest: %.60s", o->outdir, digest);
 
     char stamp[32];
     time_t now = time(NULL);
@@ -742,6 +746,7 @@ static void write_metadata(const struct build_opts *o)
     free(host);
 }
 
+// for qcow2 uses qemu-img, for ova uses ova_write
 static void convert_formats(const struct build_opts *o)
 {
     if (has_format(o, "qcow2"))
@@ -758,6 +763,7 @@ static void convert_formats(const struct build_opts *o)
 
 #pragma endregion STAGES
 
+// main function
 int cmd_build(int argc, char *argv[])
 {
     struct build_opts o;
@@ -769,6 +775,7 @@ int cmd_build(int argc, char *argv[])
     if (!dry_run && geteuid() != 0)
         die("build must run as root");
 
+    // a private mount namespace for atomicity
     if (!dry_run)
     {
         if (unshare(CLONE_NEWNS) != 0)

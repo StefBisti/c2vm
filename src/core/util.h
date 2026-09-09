@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+#define C2VM_VERSION "0.0.1-dev"
+
 #define NELEMS(a) (sizeof(a) / sizeof(a)[0])
 
 /* Documented in the usage text, so every command has to agree on them. */

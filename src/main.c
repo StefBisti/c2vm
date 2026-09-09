@@ -10,8 +10,6 @@
 #include "custody/publish.h"
 #include "custody/verify.h"
 
-#define EXIT_USAGE_ERROR EXIT_USAGE
-
 typedef int (*handler_fn)(int argc, char *argv[]);
 
 struct command
@@ -42,37 +40,21 @@ static void usage(FILE *out)
         "usage: c2vm <command> [options]\n"
         "\n"
         "commands:\n"
-        "  build <image-ref>     Build a bootable disk from a container image\n"
-        "                          --format qcow2,ova     output formats (default: qcow2)\n"
-        "                          --size 10G             disk size\n"
-        "                          --ssh-key <path>       authorized key for the default user\n"
-        "                          --packages <list>      extra packages, comma-separated\n"
-        "                          --user <name>          default user (default: c2vm)\n"
-        "                          --root-password <file> opt-in root password (hashed)\n"
-
-        "\n"
-        "  boot-test <artifact>  Boot the artifact headless and assert the guest came up\n"
-        "                          --ssh-key <path>       private key to log in with\n"
-        "                          --user <name>          guest account (default: c2vm)\n"
-        "                          --timeout <sec>        hard limit (default: 180)\n"
-        "\n"
-        "  scan <artifact>       Generate an SBOM of a built disk and scan it for CVEs\n"
-        "  diff <sbom-a> <sbom-b>\n"
-        "                        Report the package delta between two SBOMs\n"
-        "  cve <report-a> <report-b>\n"
-        "                        Report the vulnerability delta between two grype reports\n"
-        "  push <artifact> <oci-ref>\n"
-        "                        Publish the artefact to an OCI registry\n"
-        "  sign <oci-ref>        Sign the published artefact (keyless)\n"
-        "  attest <oci-ref>      Attach the SBOM and conversion attestations\n"
-        "  verify <oci-ref>      Verify signature, attestations and policy\n"
-        "                          --policy policy/default.yaml\n"
+        "  build <image-ref>          Build a bootable disk from a container image\n"
+        "  boot-test <artifact>       Boot the artifact headless and assert the guest came up\n"
+        "  scan <artifact>            Generate an SBOM of a built disk and scan it for CVEs\n"
+        "  diff <sbom-a> <sbom-b>     Report the package delta between two SBOMs\n"
+        "  cve <report-a> <report-b>  Report the vulnerability delta between two grype reports\n"
+        "  push <artifact> <oci-ref>  Publish the artefact to an OCI registry\n"
+        "  sign <oci-ref>             Sign the published artefact (keyless)\n"
+        "  attest <oci-ref>           Attach the SBOM and conversion attestations\n"
+        "  verify <oci-ref>           Verify signature, attestations and policy\n"
         "\n"
         "global:\n"
         "  -h, --help            Show this help\n"
-        "      --version         Show the version\n"
+        "  --version             Show the version\n"
         "\n"
-        "exit codes: 0 ok · 1 runtime failure · 2 usage error\n"
+        "exit codes: 0 ok, 1 runtime failure, 2 usage error\n"
         "            3 verification or policy failure\n"
         "\n",
         out);
@@ -113,7 +95,7 @@ int main(int argc, char *argv[])
     {
         fprintf(stderr, "c2vm: unknown command '%s'\n", cmd);
         fprintf(stderr, "try: c2vm --help\n");
-        return EXIT_USAGE_ERROR;
+        return EXIT_USAGE;
     }
 
     return c->handler(argc - 2, argv + 2);
