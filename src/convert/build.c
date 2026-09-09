@@ -32,6 +32,7 @@ static const char *BASE_PACKAGES[] = {
     "openssh-server",
     "sudo",
     "cloud-init",
+    "e2fsprogs", /* fsck and resize2fs for the ext4 root; slim images omit it */
 };
 
 // Without these in the initramfs the guest cannot find its root disk
