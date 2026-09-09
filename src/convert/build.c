@@ -381,7 +381,7 @@ static void apt_install(const struct build_opts *o)
     for (size_t i = 0; i < NELEMS(BASE_PACKAGES); i++)
         argv[n++] = (char *)BASE_PACKAGES[i];
 
-    char *extra = o->packages ? strdup(o->packages) : NULL;
+    char *extra = o->packages ? xstrdup(o->packages) : NULL;
     if (extra)
         for (char *t = strtok(extra, ","); t != NULL; t = strtok(NULL, ","))
         {
@@ -468,14 +468,14 @@ static char *hash_password(const char *plain)
     if (!hash || hash[0] == '*') /* libxcrypt's failure signal */
         die("password hashing failed");
 
-    return strdup(hash);
+    return xstrdup(hash);
 }
 
 // read the source_digest field from metadata/source.json
 static char *read_source_digest(const struct build_opts *o)
 {
     if (dry_run)
-        return strdup("DRYRUN");
+        return xstrdup("DRYRUN");
 
     const char *path = P("%s/metadata/source.json", o->outdir);
     char *json = read_file(path, 8192);

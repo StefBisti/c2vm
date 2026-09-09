@@ -78,10 +78,7 @@ static const char *X(const char *s)
     }
     buf[w] = '\0';
 
-    char *out = strdup(buf);
-    if (!out)
-        die("out of memory");
-    return out;
+    return xstrdup(buf);
 }
 
 // convert the raw file into vmdk (the actual disk inside ova tar)

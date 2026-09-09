@@ -62,9 +62,7 @@ size_t vuln_load(const char *path, struct vuln **out)
     p++;
 
     size_t cap = 256, n = 0;
-    struct vuln *vs = malloc(cap * sizeof *vs);
-    if (!vs)
-        die("out of memory");
+    struct vuln *vs = xmalloc(cap * sizeof *vs);
 
     int depth = 0;
     char *start = NULL;
@@ -105,10 +103,7 @@ size_t vuln_load(const char *path, struct vuln **out)
                 if (n == cap)
                 {
                     cap *= 2;
-                    struct vuln *grown = realloc(vs, cap * sizeof *vs);
-                    if (!grown)
-                        die("out of memory");
-                    vs = grown;
+                    vs = xrealloc(vs, cap * sizeof *vs);
                 }
 
                 struct vuln *e = &vs[n++];

@@ -48,9 +48,7 @@ size_t sbom_load(const char *path, struct pkg **out)
     p++;
 
     size_t cap = 256, n = 0;
-    struct pkg *pkgs = malloc(cap * sizeof *pkgs);
-    if (!pkgs)
-        die("out of memory");
+    struct pkg *pkgs = xmalloc(cap * sizeof *pkgs);
 
     int depth = 0;
     char *start = NULL;
@@ -90,10 +88,7 @@ size_t sbom_load(const char *path, struct pkg **out)
                 if (n == cap)
                 {
                     cap *= 2;
-                    struct pkg *grown = realloc(pkgs, cap * sizeof *pkgs);
-                    if (!grown)
-                        die("out of memory");
-                    pkgs = grown;
+                    pkgs = xrealloc(pkgs, cap * sizeof *pkgs);
                 }
 
                 struct pkg *e = &pkgs[n++];

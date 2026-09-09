@@ -45,17 +45,14 @@ const char *J(const char *s)
         }
 
         size_t n = strlen(rep);
-        if (w + n >= PATH_MAX)
-            break; /* truncate rather than overflow */
+        if (w + n >= sizeof buf)
+            die("cannot escape a value longer than %zu bytes", sizeof buf - 1);
         memcpy(buf + w, rep, n);
         w += n;
     }
     buf[w] = '\0';
 
-    char *out = strdup(buf);
-    if (!out)
-        die("out of memory");
-    return out;
+    return xstrdup(buf);
 }
 
 char *json_get(const char *json, const char *key)
@@ -73,9 +70,7 @@ char *json_get(const char *json, const char *key)
         return NULL;
 
     size_t n = (size_t)(end - val - 1);
-    char *out = malloc(n + 1);
-    if (!out)
-        die("out of memory");
+    char *out = xmalloc(n + 1);
     memcpy(out, val + 1, n);
     out[n] = '\0';
 
@@ -151,9 +146,7 @@ static char *extract(const char *json, const char *key, char open_ch, char close
         else if (*p == close_ch && --depth == 0)
         {
             size_t n = (size_t)(p - open) + 1;
-            char *out = malloc(n + 1);
-            if (!out)
-                die("out of memory");
+            char *out = xmalloc(n + 1);
             memcpy(out, open, n);
             out[n] = '\0';
             return out;

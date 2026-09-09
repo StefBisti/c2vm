@@ -41,6 +41,30 @@ void warn(const char *fmt, ...)
     fputc('\n', stderr);
 }
 
+void *xmalloc(size_t n)
+{
+    void *p = malloc(n);
+    if (!p)
+        die("out of memory");
+    return p;
+}
+
+void *xrealloc(void *p, size_t n)
+{
+    void *q = realloc(p, n);
+    if (!q)
+        die("out of memory");
+    return q;
+}
+
+char *xstrdup(const char *s)
+{
+    char *p = strdup(s);
+    if (!p)
+        die("out of memory");
+    return p;
+}
+
 const char *P(const char *fmt, ...)
 {
     char buf[PATH_MAX];
@@ -50,10 +74,7 @@ const char *P(const char *fmt, ...)
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
 
-    char *s = strdup(buf);
-    if (!s)
-        die("out of memory");
-    return s;
+    return xstrdup(buf);
 }
 
 char *read_file(const char *path, size_t max)
@@ -62,9 +83,7 @@ char *read_file(const char *path, size_t max)
     if (!f)
         die("cannot read %s: %s", path, strerror(errno));
 
-    char *buf = malloc(max + 1);
-    if (!buf)
-        die("out of memory");
+    char *buf = xmalloc(max + 1);
 
     size_t n = fread(buf, 1, max, f);
     bool overflow = fgetc(f) != EOF;
@@ -189,9 +208,7 @@ static int b64val(unsigned char c)
 char *base64_decode(const char *in, size_t *outlen)
 {
     size_t n = strlen(in);
-    char *out = malloc(n / 4 * 3 + 4);
-    if (!out)
-        die("out of memory");
+    char *out = xmalloc(n / 4 * 3 + 4);
 
     unsigned acc = 0;
     int bits = 0;

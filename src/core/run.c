@@ -22,13 +22,9 @@ static void collect(const char *prog, va_list ap, char *argv[])
     {
         const char *a = va_arg(ap, const char *);
         if (!a)
-        {
             break;
-        }
         if (n + 1 >= MAX_ARGS)
-        {
             die("too many arguments");
-        }
         argv[n++] = (char *)a;
     }
     argv[n] = NULL;
@@ -50,7 +46,7 @@ static int spawn(char *const argv[], char **out)
     if (dry_run)
     {
         if (out)
-            *out = strdup("DRYRUN");
+            *out = xstrdup("DRYRUN");
         return 0;
     }
 
@@ -79,18 +75,13 @@ static int spawn(char *const argv[], char **out)
     {
         close(fds[1]);
         size_t cap = 4096, len = 0;
-        char *buf = malloc(cap);
-        if (!buf)
-            die("out of memory");
+        char *buf = xmalloc(cap);
         for (;;)
         {
             if (len + 1 >= cap)
             {
                 cap *= 2;
-                char *grown = realloc(buf, cap);
-                if (!grown)
-                    die("out of memory");
-                buf = grown;
+                buf = xrealloc(buf, cap);
             }
             ssize_t got = read(fds[0], buf + len, cap - len - 1);
             if (got <= 0)

@@ -324,10 +324,8 @@ int cmd_diff(int argc, char *argv[])
     qsort(a, na, sizeof *a, cmp_full);
     qsort(b, nb, sizeof *b, cmp_full);
 
-    struct pkg *only_a = malloc(na * sizeof *only_a);
-    struct pkg *only_b = malloc(nb * sizeof *only_b);
-    if (!only_a || !only_b)
-        die("out of memory");
+    struct pkg *only_a = xmalloc((na + 1) * sizeof *only_a);
+    struct pkg *only_b = xmalloc((nb + 1) * sizeof *only_b);
 
     size_t noa = 0, nob = 0, nunch = 0;
 
@@ -355,11 +353,9 @@ int cmd_diff(int argc, char *argv[])
     }
 
     // A name present on both sides with a different version is a change
-    struct pkg *added = malloc((nob + 1) * sizeof *added);
-    struct pkg *removed = malloc((noa + 1) * sizeof *removed);
-    struct change *changed = malloc((noa + nob + 1) * sizeof *changed);
-    if (!added || !removed || !changed)
-        die("out of memory");
+    struct pkg *added = xmalloc((nob + 1) * sizeof *added);
+    struct pkg *removed = xmalloc((noa + 1) * sizeof *removed);
+    struct change *changed = xmalloc((noa + nob + 1) * sizeof *changed);
 
     size_t nadd = 0, nrem = 0, nchg = 0;
 

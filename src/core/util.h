@@ -26,6 +26,11 @@ void warn(const char *fmt, ...);
 // formats into fresh storage the process never frees, convenient
 const char *P(const char *fmt, ...);
 
+// malloc/realloc/strdup that die instead of handing back NULL
+void *xmalloc(size_t n);
+void *xrealloc(void *p, size_t n);
+char *xstrdup(const char *s);
+
 // reads whole file, caller frees
 char *read_file(const char *path, size_t max);
 

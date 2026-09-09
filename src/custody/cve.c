@@ -82,9 +82,7 @@ static void tally(const struct vuln *v, size_t n, size_t out[SEVERITY_COUNT][2])
    packages runs instantly; sort by (package, eco) first if that changes. */
 static size_t attribute(const struct vuln *v, size_t n, struct attribution **out)
 {
-    struct attribution *rows = malloc((n + 1) * sizeof *rows);
-    if (!rows)
-        die("out of memory");
+    struct attribution *rows = xmalloc((n + 1) * sizeof *rows);
 
     size_t nrows = 0;
 
@@ -300,10 +298,8 @@ int cmd_cve(int argc, char *argv[])
     qsort(a, na, sizeof *a, cmp_key_qsort);
     qsort(b, nb, sizeof *b, cmp_key_qsort);
 
-    struct vuln *new = malloc((nb + 1) * sizeof *new);
-    struct vuln *gone = malloc((na + 1) * sizeof *gone);
-    if (!new || !gone)
-        die("out of memory");
+    struct vuln *new = xmalloc((nb + 1) * sizeof *new);
+    struct vuln *gone = xmalloc((na + 1) * sizeof *gone);
 
     size_t nnew = 0, ngone = 0, nshared = 0;
 
