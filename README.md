@@ -4,28 +4,52 @@
 
 ## What it is
 
-Convertor from a Debian-family OCI image to a bootable VM disk (QCOW2, OVA), while preserving the conversion supply-chain
+Convertor from a Debian-family OCI image to a bootable VM disk (QCOW2, OVA), while preserving and verifying the conversion supply-chain.
 
-## Explanation
+## The scenario
 
-A container image has a digest, an SBOM and a signature. Turning it into a bootable disk adds a kernel, an initramfs, GRUB and systemd that weren't initially in the image, so the result is an opaque multi-gigabyte blob whose recipient can prove neither what is in it nor where it came from.
+Someone sends you a 600MB `appliance.ova`. Even though it runs, you question:
 
-c2vm measures what the conversion added and signs a statement binding the output disk back to the source image digest.
+- What exactly is inside it?
+- Who built it, and from what?
+- Has anything changed since they built it?
+- How much did the conversion add?
+
+c2vm produces a disk where you can answer everything from the artifact itself without even downloading it.
 
 ## The numbers
 
-Converting `ubuntu:24.04` to a bootable QCOW2, measured with syft 1.51.1 and grype 0.118.0 (vulnerability database built 2026-09-01):
+Converting `ubuntu@sha256:2260313b…` (`ubuntu:latest` on 2026-09-09) to a bootable QCOW2, measured with syft 1.51.1 and grype 0.118.0 (vulnerability database built 2026-09-09). Debian packages and CVEs are counted over `pkg:deb` only — see [why there are two columns](docs/examples/cve-diff.md):
 
 | | container | VM disk |
 |---|---|---|
-| Debian packages | 92 | 209 (**+117**) |
-| Critical CVEs | 0 | **5** |
-| High CVEs | 0 | **152** |
+| Debian packages | 87 | 215 (**+128**) |
+| Critical CVEs | 0 | **4** |
+| High CVEs | 0 | **87** |
+
+Sample reports: [docs/examples](docs/examples/)
+
+## How it works
+
+```
+OCI image
+  |  build        pull by digest, partition, format, chroot, install
+  |               kernel + GRUB + systemd + cloud-init, record build.json
+disk.qcow2 / disk.ova
+  |  boot-test    boot headless, assert the guest matches build.json
+  |  scan         SBOM both sides, then grype over each
+  |  sbom-diff    what the conversion added, grouped by why
+  |  cve-diff     what it cost in cves
+  |  push         registry as content-addressed storage
+  |  sign         keyless, via Sigstore
+  |  attest       SBOM + a conversion statement, both signed
+  | verify        six checks from a reference alone — the disk is never downloaded
+```
 
 ## Quickstart
 
-```sh
-make tools          # syft, grype, cosign, oras
+```bash
+make tools # installs syft, grype, cosign, oras
 make
 
 sudo ./c2vm build ubuntu:24.04 --format qcow2,ova --ssh-key ~/.ssh/id_ed25519.pub
@@ -36,22 +60,22 @@ sudo ./c2vm scan build/disk.qcow2
 ./c2vm cve-diff  results/cve-source.json      results/cve-disk.json
 ```
 
-Publishing:
+Publishing, then verifying from anywhere:
 
-```sh
+```bash
 ./c2vm push build/disk.qcow2 ghcr.io/<user>/c2vm-demo:latest
 ./c2vm sign   ghcr.io/<user>/c2vm-demo:latest
 ./c2vm attest ghcr.io/<user>/c2vm-demo:latest
 ./c2vm verify ghcr.io/<user>/c2vm-demo:latest
 ```
 
-Requires a Linux host with KVM, `qemu`, `parted`, `rsync`, `skopeo`, `umoci` and `libguestfs-tools`. `build` and `scan` need root.
+Important: The disk is pushed as an OCI artifact with its own media types (nothing will try to docker run it). The registry is being used as a simple content-addressed storage.
 
 ## Commands
 
 | | |
 |---|---|
-| `build <image-ref>` | container image → bootable disk, recording every decision in `build.json` |
+| `build <image-ref>` | container image to bootable disk, recording every decision in `build.json` |
 | `boot-test <artifact>` | boot it headless, assert the guest is the one `build.json` describes |
 | `scan <artifact>` | SBOMs of both sides (SPDX + CycloneDX), then grype over each |
 | `sbom-diff <a> <b>` | package delta: added, removed, version-changed |
@@ -59,111 +83,21 @@ Requires a Linux host with KVM, `qemu`, `parted`, `rsync`, `skopeo`, `umoci` and
 | `push` / `sign` / `attest` | publish as an OCI artifact, sign keylessly, attach attestations |
 | `verify <oci-ref>` | check signature, identity, both attestations and CVE policy |
 
-Full reference in [docs/cli.md](docs/cli.md).
+## Documentation
 
-## Test demo with nginx
+| | |
+|---|---|
+| [requirements.md](docs/requirements.md) | what you need installed |
+| [tutorial.md](docs/tutorial.md) | full overview of how c2vm works |
+| [cli.md](docs/cli.md) | every command, every flag |
+| [internals.md](docs/internals.md) | how each command works |
+| [limitations.md](docs/limitations.md) | what it cannot do, why, and workarounds |
+| [alternatives.md](docs/alternatives.md) | other converters, and when to use them instead |
+| [troubleshooting.md](docs/troubleshooting.md) | when something fails |
 
-``` bash
-make
-sudo modprobe kvm_intel # enable kvm
+## Status and limits
 
-# 1. build (Debian kernel)
-sudo ./c2vm build nginx:stable \
-  --kernel linux-image-amd64 \
-  --hostname nginx-vm \
-  --format qcow2 \
-  --ssh-key ~/.ssh/id_ed25519.pub \
-  --out build-nginx
-sudo chown -R $USER:$USER build-nginx
-
-# 2. check if it actually boots and matches its own build.json
-./c2vm boot-test build-nginx/disk.qcow2 --ssh-key ~/.ssh/id_ed25519 --out build-nginx
-
-# 3. custody, into its own directory
-sudo ./c2vm scan build-nginx/disk.qcow2 --out build-nginx --results results-nginx
-sudo chown -R $USER:$USER results-nginx
-./c2vm sbom-diff results-nginx/sbom-source.spdx.json results-nginx/sbom-disk.spdx.json --results results-nginx
-./c2vm cve-diff results-nginx/cve-source.json results-nginx/cve-disk.json --results results-nginx
-
-# 4. test nginx serving
-
-cp /usr/share/OVMF/OVMF_VARS_4M.fd /tmp/nginx-vars.fd
-
-qemu-system-x86_64 -machine q35 -enable-kvm -cpu host -m 2048 -smp 2 \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
-  -drive if=pflash,format=raw,file=/tmp/nginx-vars.fd \
-  -drive file=build-nginx/disk.qcow2,format=qcow2,if=virtio \
-  -netdev user,id=net0,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:80 \
-  -device virtio-net-pci,netdev=net0 \
-  -display none -serial file:/tmp/nginx-console.log -no-reboot -snapshot
-
-# leave it running for a bit (40s), then, in another terminal:
-curl -i http://localhost:8080 # expect HTTP/1.1 200 OK, Server: nginx/1.28.x and the Welcome page
-
-# 5. publish
-./c2vm push build-nginx/disk.qcow2 ghcr.io/stefbisti/c2vm-nginx:latest --out build-nginx
-./c2vm sign   ghcr.io/stefbisti/c2vm-nginx:latest
-./c2vm attest ghcr.io/stefbisti/c2vm-nginx:latest --out build-nginx --results results-nginx
-./c2vm verify ghcr.io/stefbisti/c2vm-nginx:latest
-
-```
-
-## Using a published c2vm disk
-
-The published disk contains no credentials. You choose your own at first boot by attaching a cloud-init seed:
-
-```bash
-
-# !!! anything between {} is custom data
-
-# Verify the disk before doing anything
-
-c2vm verify {ghcr.io/stefbisti/c2vm-demo:latest} # exit 0 = trusted, otherwise it is unsafe
-oras pull {ghcr.io/stefbisti/c2vm-demo:latest}
-
-# Build your seed
-
-mkdir -p seed
-PWHASH=$(openssl passwd -6)
-
-cat > seed/user-data <<EOF
-#cloud-config
-users:
-  - name: {stefan}
-    groups: [adm, sudo]
-    sudo: "ALL=(ALL) NOPASSWD:ALL"
-    shell: /bin/bash
-    lock_passwd: false
-    passwd: "$PWHASH"
-    ssh_authorized_keys:
-      - "$(cat {/path/to/your/ssh_key.pub})"
-
-ssh_pwauth: false
-EOF
-
-echo "instance-id: iid-$(hostname)-$(date +%s)" > seed/meta-data
-
-genisoimage -output seed.iso -V cidata -r -J seed
- in settings->storage, 
-# Boot
-
-cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
-
-qemu-system-x86_64 -machine q35 -enable-kvm -cpu host -m 2048 -smp 2 \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
-  -drive if=pflash,format=raw,file=vars.fd \
-  -drive file=disk.qcow2,format=qcow2,if=virtio \
-  -drive file=seed.iso,media=cdrom \
-  -netdev user,id=net0,hostfwd=tcp::2222-:22 \
-  -device virtio-net-pci,netdev=net0 \
-  -nographic -no-reboot
-
-# Log in via ssh:
-ssh -p 2222 {stefan}@127.0.0.1
-
-```
-
-
+Working and used end to end. Not production-hardened.
 
 ## Layout
 
@@ -173,7 +107,7 @@ src/convert/    build, OVA packaging, boot testing
 src/custody/    SBOMs, deltas, signing, attestation
 policy/         who may have signed, and the CVE limits
 scripts/        rootfs extraction, charting
-results/        SBOMs, deltas, the predicate
+docs/           everything above
 ```
 
 ## Acknowledgements
@@ -182,7 +116,8 @@ Written by Stefan Bisti as a university project, with [Claude Code](https://clau
 - Architectural planning
 - Implementation and code-review
 - Clarifying some concepts
+- Writing the docs
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
