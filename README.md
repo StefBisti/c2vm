@@ -32,8 +32,8 @@ sudo ./c2vm build ubuntu:24.04 --format qcow2,ova --ssh-key ~/.ssh/id_ed25519.pu
 ./c2vm boot-test build/disk.qcow2 --ssh-key ~/.ssh/id_ed25519
 
 sudo ./c2vm scan build/disk.qcow2
-./c2vm diff results/sbom-source.spdx.json results/sbom-disk.spdx.json
-./c2vm cve  results/cve-source.json      results/cve-disk.json
+./c2vm sbom-diff results/sbom-source.spdx.json results/sbom-disk.spdx.json
+./c2vm cve-diff  results/cve-source.json      results/cve-disk.json
 ```
 
 Publishing:
@@ -54,8 +54,8 @@ Requires a Linux host with KVM, `qemu`, `parted`, `rsync`, `skopeo`, `umoci` and
 | `build <image-ref>` | container image → bootable disk, recording every decision in `build.json` |
 | `boot-test <artifact>` | boot it headless, assert the guest is the one `build.json` describes |
 | `scan <artifact>` | SBOMs of both sides (SPDX + CycloneDX), then grype over each |
-| `diff <sbom-a> <sbom-b>` | package delta: added, removed, version-changed |
-| `cve <report-a> <report-b>` | vulnerability delta by severity, attributed to packages |
+| `sbom-diff <a> <b>` | package delta: added, removed, version-changed |
+| `cve-diff <a> <b>` | vulnerability delta by severity, attributed to packages |
 | `push` / `sign` / `attest` | publish as an OCI artifact, sign keylessly, attach attestations |
 | `verify <oci-ref>` | check signature, identity, both attestations and CVE policy |
 
@@ -82,8 +82,8 @@ sudo chown -R $USER:$USER build-nginx
 # 3. custody, into its own directory
 sudo ./c2vm scan build-nginx/disk.qcow2 --out build-nginx --results results-nginx
 sudo chown -R $USER:$USER results-nginx
-./c2vm diff results-nginx/sbom-source.spdx.json results-nginx/sbom-disk.spdx.json --results results-nginx
-./c2vm cve results-nginx/cve-source.json results-nginx/cve-disk.json --results results-nginx
+./c2vm sbom-diff results-nginx/sbom-source.spdx.json results-nginx/sbom-disk.spdx.json --results results-nginx
+./c2vm cve-diff results-nginx/cve-source.json results-nginx/cve-disk.json --results results-nginx
 
 # 4. test nginx serving
 

@@ -31,7 +31,7 @@ struct attribution
 static void cve_usage(void)
 {
     fputs(
-        "usage: c2vm cve <report-a> <report-b> [options]\n"
+        "usage: c2vm cve-diff <report-a> <report-b> [options]\n"
         "\n"
         "  --results <dir>    where the report is written (default: results)\n"
         "\n"
@@ -239,7 +239,7 @@ static void write_markdown(const struct cve_opts *o,
 }
 
 // main function
-int cmd_cve(int argc, char *argv[])
+int cmd_cve_diff(int argc, char *argv[])
 {
     // start parse opts
     struct cve_opts o = {NULL, NULL, "results"};
@@ -257,14 +257,14 @@ int cmd_cve(int argc, char *argv[])
         {
             if (i + 1 >= argc)
             {
-                fprintf(stderr, "c2vm cve: %s needs a value\n", arg);
+                fprintf(stderr, "c2vm cve-diff: %s needs a value\n", arg);
                 return EXIT_USAGE;
             }
             if (!strcmp(arg, "--results"))
                 o.results = argv[++i];
             else
             {
-                fprintf(stderr, "c2vm cve: unknown option '%s'\n", arg);
+                fprintf(stderr, "c2vm cve-diff: unknown option '%s'\n", arg);
                 return EXIT_USAGE;
             }
             continue;
@@ -276,14 +276,14 @@ int cmd_cve(int argc, char *argv[])
             o.b = arg;
         else
         {
-            fprintf(stderr, "c2vm cve: unexpected argument '%s'\n", arg);
+            fprintf(stderr, "c2vm cve-diff: unexpected argument '%s'\n", arg);
             return EXIT_USAGE;
         }
     }
 
     if (!o.a || !o.b)
     {
-        fprintf(stderr, "c2vm cve: two grype reports are required\n");
+        fprintf(stderr, "c2vm cve-diff: two grype reports are required\n");
         cve_usage();
         return EXIT_USAGE;
     }

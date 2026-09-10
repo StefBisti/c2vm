@@ -190,7 +190,7 @@ static int cve_check(const char *grype, const struct policy *pol, const char *sp
     unlink(sbom);
     unlink(reportfile);
 
-    /* Two columns, as c2vm cve reports them: every ecosystem, and the deb
+    /* Two columns, as c2vm cve-diff reports them: every ecosystem, and the deb
        packages the conversion actually installed. NVD matches the kernel by
        CPE against every CVE ever filed against it, so the all-ecosystem
        number is an order of magnitude larger and is not what a policy on

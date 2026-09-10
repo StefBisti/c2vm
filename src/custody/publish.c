@@ -77,13 +77,13 @@ static void predicate_write(const struct pub_opts *o, const char *path)
 
     /*
      * Embedded verbatim rather than re-derived: the list the predicate
-     * claims must be the same list c2vm diff published, byte for byte, or
+     * claims must be the same list c2vm sbom-diff published, byte for byte, or
      * the attestation and the results contradict each other.
      */
     char *diff = json_slurp(P("%s/sbom-diff.json", o->results));
     char *added = json_array(diff, "added");
     if (!added)
-        die("%s/sbom-diff.json has no \"added\" array; run c2vm diff first", o->results);
+        die("%s/sbom-diff.json has no \"added\" array; run c2vm sbom-diff first", o->results);
 
     FILE *f = fopen(path, "w");
     if (!f)

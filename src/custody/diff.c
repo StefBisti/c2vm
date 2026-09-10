@@ -94,7 +94,7 @@ static int cmp_name(const struct pkg *a, const struct pkg *b)
 static void diff_usage(void)
 {
     fputs(
-        "usage: c2vm diff <sbom-a> <sbom-b> [options]\n"
+        "usage: c2vm sbom-diff <sbom-a> <sbom-b> [options]\n"
         "\n"
         "  --results <dir>    where the report is written (default: results)\n"
         "\n"
@@ -256,7 +256,7 @@ static void write_markdown(const struct report *r)
 }
 
 // main function
-int cmd_diff(int argc, char *argv[])
+int cmd_sbom_diff(int argc, char *argv[])
 {
     // start parse opts
     struct diff_opts o = {NULL, NULL, "results"};
@@ -274,14 +274,14 @@ int cmd_diff(int argc, char *argv[])
         {
             if (i + 1 >= argc)
             {
-                fprintf(stderr, "c2vm diff: %s needs a value\n", arg);
+                fprintf(stderr, "c2vm sbom-diff: %s needs a value\n", arg);
                 return EXIT_USAGE;
             }
             if (!strcmp(arg, "--results"))
                 o.results = argv[++i];
             else
             {
-                fprintf(stderr, "c2vm diff: unknown option '%s'\n", arg);
+                fprintf(stderr, "c2vm sbom-diff: unknown option '%s'\n", arg);
                 return EXIT_USAGE;
             }
             continue;
@@ -293,14 +293,14 @@ int cmd_diff(int argc, char *argv[])
             o.b = arg;
         else
         {
-            fprintf(stderr, "c2vm diff: unexpected argument '%s'\n", arg);
+            fprintf(stderr, "c2vm sbom-diff: unexpected argument '%s'\n", arg);
             return EXIT_USAGE;
         }
     }
 
     if (!o.a || !o.b)
     {
-        fprintf(stderr, "c2vm diff: two SBOMs are required\n");
+        fprintf(stderr, "c2vm sbom-diff: two SBOMs are required\n");
         diff_usage();
         return EXIT_USAGE;
     }

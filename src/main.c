@@ -22,8 +22,8 @@ static const struct command COMMANDS[] = {
     {"build", cmd_build},
     {"boot-test", cmd_boot_test},
     {"scan", cmd_scan},
-    {"diff", cmd_diff},
-    {"cve", cmd_cve},
+    {"sbom-diff", cmd_sbom_diff},
+    {"cve-diff", cmd_cve_diff},
     {"push", cmd_push},
     {"sign", cmd_sign},
     {"attest", cmd_attest},
@@ -43,8 +43,8 @@ static void usage(FILE *out)
         "  build <image-ref>          Build a bootable disk from a container image\n"
         "  boot-test <artifact>       Boot the artifact headless asserts the guest came up and checks metadata\n"
         "  scan <artifact>            Generate an SBOM of a built disk and scan it for CVEs\n"
-        "  diff <sbom-a> <sbom-b>     Report the package delta between two SBOMs\n"
-        "  cve <report-a> <report-b>  Report the vulnerability delta between two grype reports\n"
+        "  sbom-diff <a> <b>          Report the package delta between two SBOMs\n"
+        "  cve-diff <a> <b>           Report the vulnerability delta between two grype reports\n"
         "  push <artifact> <oci-ref>  Publish the artefact to an OCI registry\n"
         "  sign <oci-ref>             Sign the published artefact (keyless)\n"
         "  attest <oci-ref>           Attach the SBOM and conversion attestations\n"
