@@ -1,6 +1,8 @@
 #ifndef C2VM_JSON_H
 #define C2VM_JSON_H
 
+#include <stddef.h>
+
 // escapes a string in order to embed it into json
 const char *J(const char *s);
 
@@ -21,6 +23,10 @@ char *json_array(const char *json, const char *key);
 
 // gets raw json object, curly braces included
 char *json_object(const char *json, const char *key);
+
+// calls cb once per top-level object of the array at key
+size_t json_each_object(char *doc, const char *path, const char *key,
+                        void (*cb)(const char *elem, void *ctx), void *ctx);
 
 // undoes json string escapes
 char *json_unescape(char *s);

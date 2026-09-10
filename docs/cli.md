@@ -91,8 +91,8 @@ Both inputs SPDX JSON. `<sbom-a>` is the baseline: packages only in `<sbom-b>`
 are added. Additions are grouped by function (kernel, bootloader, init,
 networking, cloud-init) and counted per ecosystem.
 
-Writes `sbom-diff.json` and `sbom-diff.md`. `attest` embeds the `added` array
-verbatim, so run this before publishing.
+Writes `sbom-diff.json` and `sbom-diff.md`. `attest` embeds the `added_deb`
+array verbatim, so run this before publishing.
 
 ---
 

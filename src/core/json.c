@@ -1,6 +1,7 @@
 #include "core/json.h"
 #include "core/util.h"
 #include <errno.h>
+#include <stdbool.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -163,6 +164,68 @@ char *json_array(const char *json, const char *key)
 char *json_object(const char *json, const char *key)
 {
     return extract(json, key, '{', '}');
+}
+
+size_t json_each_object(char *doc, const char *path, const char *key,
+                        void (*cb)(const char *elem, void *ctx), void *ctx)
+{
+    char *k = strstr(doc, P("\"%s\"", key));
+    die_if(!k, "%s has no \"%s\" array", path, key);
+
+    char *p = strchr(k + strlen(key) + 2, '[');
+    die_if(!p, "%s: \"%s\" is not an array", path, key);
+    p++;
+
+    size_t n = 0;
+    int depth = 0;
+    char *start = NULL;
+    bool closed = false;
+
+    for (; *p; p++)
+    {
+        if (*p == '"')
+        {
+            p = (char *)json_skip_string(p) - 1;
+            continue;
+        }
+
+        if (*p == '{')
+        {
+            if (depth == 0)
+                start = p;
+            depth++;
+            continue;
+        }
+
+        if (*p == '}')
+        {
+            depth--;
+            if (depth > 0 || !start)
+                continue;
+
+            /* Terminate the element in place, hand it over, put the byte back. */
+            char save = p[1];
+            p[1] = '\0';
+            cb(start, ctx);
+            p[1] = save;
+
+            n++;
+            start = NULL;
+            continue;
+        }
+
+        /* The array's own closing bracket, at depth 0, ends the walk. */
+        if (*p == ']' && depth == 0)
+        {
+            closed = true;
+            break;
+        }
+    }
+
+    die_if(!closed, "%s: truncated or malformed — the \"%s\" array never closes "
+           "(%zu entries read before the end of the file)", path, key, n);
+
+    return n;
 }
 
 char *json_unescape(char *s)

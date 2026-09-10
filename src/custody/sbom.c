@@ -30,95 +30,51 @@ void purl_ecosystem(const char *elem, char *out, size_t cap)
     snprintf(out, cap < i + 1 ? cap : i + 1, "%s", purl);
 }
 
+struct pkg_acc
+{
+    struct pkg *v;
+    size_t n, cap;
+};
+
+static void collect_pkg(const char *elem, void *ctx)
+{
+    struct pkg_acc *a = ctx;
+
+    char *name = json_get(elem, "name");
+    char *ver = json_get(elem, "versionInfo");
+
+    if (name)
+    {
+        if (a->n == a->cap)
+            a->v = xrealloc(a->v, (a->cap *= 2) * sizeof *a->v);
+
+        struct pkg *e = &a->v[a->n++];
+        snprintf(e->name, sizeof e->name, "%s", name);
+        snprintf(e->version, sizeof e->version, "%s", ver ? ver : "");
+        purl_ecosystem(elem, e->eco, sizeof e->eco);
+    }
+
+    free(name);
+    free(ver);
+}
+
 size_t sbom_load(const char *path, struct pkg **out)
 {
     char *doc = json_slurp(path);
 
-    char *key = strstr(doc, "\"packages\"");
-    die_if(!key, "%s has no \"packages\" array", path);
+    struct pkg_acc acc = {.cap = 256, .n = 0};
+    acc.v = xmalloc(acc.cap * sizeof *acc.v);
 
-    char *p = strchr(key + strlen("\"packages\""), '[');
-    die_if(!p, "%s: \"packages\" is not an array", path);
-    p++;
-
-    size_t cap = 256, n = 0;
-    struct pkg *pkgs = xmalloc(cap * sizeof *pkgs);
-
-    int depth = 0;
-    char *start = NULL;
-    bool closed = false; // did the packages array actually end?
-
-    for (; *p; p++)
-    {
-        if (*p == '"')
-        {
-            p = (char *)json_skip_string(p) - 1;
-            continue;
-        }
-
-        if (*p == '{')
-        {
-            if (depth == 0)
-                start = p;
-            depth++;
-            continue;
-        }
-
-        if (*p == '}')
-        {
-            depth--;
-            if (depth > 0 || !start)
-                continue;
-
-            /* Terminate the element in place, read it, put the byte back. */
-            char save = p[1];
-            p[1] = '\0';
-
-            char *name = json_get(start, "name");
-            char *ver = json_get(start, "versionInfo");
-
-            if (name)
-            {
-                if (n == cap)
-                {
-                    cap *= 2;
-                    pkgs = xrealloc(pkgs, cap * sizeof *pkgs);
-                }
-
-                struct pkg *e = &pkgs[n++];
-                snprintf(e->name, sizeof e->name, "%s", name);
-                snprintf(e->version, sizeof e->version, "%s", ver ? ver : "");
-                purl_ecosystem(start, e->eco, sizeof e->eco);
-            }
-
-            free(name);
-            free(ver);
-
-            p[1] = save;
-            start = NULL;
-            continue;
-        }
-
-        /* The array's own closing bracket, at depth 0, ends the walk. */
-        if (*p == ']' && depth == 0)
-        {
-            closed = true;
-            break;
-        }
-    }
-
+    json_each_object(doc, path, "packages", collect_pkg, &acc);
     free(doc);
 
-    die_if(!closed, "%s: truncated or malformed — the packages array never closes "
-            "(%zu entries read before the end of the file)", path, n);
+    die_if(acc.n == 0, "%s: no packages found; is it an SPDX document?", path);
 
-    die_if(n == 0, "%s: no packages found; is it an SPDX document?", path);
+    size_t unique = dedupe_sorted(acc.v, acc.n, sizeof *acc.v, cmp_pkg);
+    if (unique != acc.n)
+        fprintf(stderr, "  %s: %zu entries, %zu after deduplication\n", path, acc.n, unique);
 
-    size_t unique = dedupe_sorted(pkgs, n, sizeof *pkgs, cmp_pkg);
-    if (unique != n)
-        fprintf(stderr, "  %s: %zu entries, %zu after deduplication\n", path, n, unique);
-
-    *out = pkgs;
+    *out = acc.v;
     return unique;
 }
 

@@ -48,99 +48,60 @@ void grype_env(void)
         setenv("GRYPE_DB_CACHE_DIR", cache, 1);
 }
 
+struct vuln_acc
+{
+    struct vuln *v;
+    size_t n, cap;
+};
+
+static void collect_vuln(const char *elem, void *ctx)
+{
+    struct vuln_acc *a = ctx;
+
+    char *id = json_get_in(elem, "vulnerability", "id");
+    char *sev = json_get_in(elem, "vulnerability", "severity");
+    char *pkg = json_get_in(elem, "artifact", "name");
+    char *ver = json_get_in(elem, "artifact", "version");
+
+    if (id && sev && pkg)
+    {
+        if (a->n == a->cap)
+            a->v = xrealloc(a->v, (a->cap *= 2) * sizeof *a->v);
+
+        struct vuln *e = &a->v[a->n++];
+        snprintf(e->id, sizeof e->id, "%s", id);
+        snprintf(e->severity, sizeof e->severity, "%s", sev);
+        snprintf(e->package, sizeof e->package, "%s", pkg);
+        snprintf(e->version, sizeof e->version, "%s", ver ? ver : "");
+
+        // scoped to artifact
+        const char *art = strstr(elem, "\"artifact\"");
+        purl_ecosystem(art ? art : elem, e->eco, sizeof e->eco);
+    }
+
+    free(id);
+    free(sev);
+    free(pkg);
+    free(ver);
+}
+
 size_t vuln_load(const char *path, struct vuln **out)
 {
     char *doc = json_slurp(path);
 
-    char *key = strstr(doc, "\"matches\"");
-    die_if(!key, "%s has no \"matches\" array; is it a grype JSON report?", path);
+    die_if(!strstr(doc, "\"matches\""), "%s has no \"matches\" array; is it a grype JSON report?", path);
 
-    char *p = strchr(key + strlen("\"matches\""), '[');
-    die_if(!p, "%s: \"matches\" is not an array", path);
-    p++;
+    struct vuln_acc acc = {.cap = 256, .n = 0};
+    acc.v = xmalloc(acc.cap * sizeof *acc.v);
 
-    size_t cap = 256, n = 0;
-    struct vuln *vs = xmalloc(cap * sizeof *vs);
-
-    int depth = 0;
-    char *start = NULL;
-    bool closed = false;
-
-    for (; *p; p++)
-    {
-        if (*p == '"')
-        {
-            p = (char *)json_skip_string(p) - 1;
-            continue;
-        }
-
-        if (*p == '{')
-        {
-            if (depth == 0)
-                start = p;
-            depth++;
-            continue;
-        }
-
-        if (*p == '}')
-        {
-            depth--;
-            if (depth > 0 || !start)
-                continue;
-
-            char save = p[1];
-            p[1] = '\0';
-
-            char *id = json_get_in(start, "vulnerability", "id");
-            char *sev = json_get_in(start, "vulnerability", "severity");
-            char *pkg = json_get_in(start, "artifact", "name");
-            char *ver = json_get_in(start, "artifact", "version");
-
-            if (id && sev && pkg)
-            {
-                if (n == cap)
-                {
-                    cap *= 2;
-                    vs = xrealloc(vs, cap * sizeof *vs);
-                }
-
-                struct vuln *e = &vs[n++];
-                snprintf(e->id, sizeof e->id, "%s", id);
-                snprintf(e->severity, sizeof e->severity, "%s", sev);
-                snprintf(e->package, sizeof e->package, "%s", pkg);
-                snprintf(e->version, sizeof e->version, "%s", ver ? ver : "");
-
-                // scoped to artifact
-                const char *art = strstr(start, "\"artifact\"");
-                purl_ecosystem(art ? art : start, e->eco, sizeof e->eco);
-            }
-
-            free(id);
-            free(sev);
-            free(pkg);
-            free(ver);
-
-            p[1] = save;
-            start = NULL;
-            continue;
-        }
-
-        if (*p == ']' && depth == 0)
-        {
-            closed = true;
-            break;
-        }
-    }
-
+    json_each_object(doc, path, "matches", collect_vuln, &acc);
     free(doc);
 
-    die_if(!closed, "%s: truncated or malformed, the matches array never closes (%zu findings read before the end of the file)", path, n);
-    size_t unique = n ? dedupe_sorted(vs, n, sizeof *vs, cmp_vuln) : 0;
-    if (unique != n)
-    {
-        fprintf(stderr, "  %s: %zu findings, %zu after deduplication\n", path, n, unique);
-    }
-    *out = vs;
+    size_t unique = acc.n ? dedupe_sorted(acc.v, acc.n, sizeof *acc.v, cmp_vuln) : 0;
+    if (unique != acc.n)
+        fprintf(stderr, "  %s: %zu findings, %zu after deduplication\n", path, acc.n, unique);
+
+    *out = acc.v;
     return unique;
 }
 
