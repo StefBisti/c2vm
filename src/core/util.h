@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define C2VM_VERSION "0.0.1-dev"
+#define C2VM_VERSION "0.1.0"
 
 #define NELEMS(a) (sizeof(a) / sizeof(a)[0])
 
