@@ -99,7 +99,11 @@ char *json_slurp(const char *path)
     size_t got = fread(buf, 1, (size_t)st.st_size, f);
     fclose(f);
 
+    die_if(got != (size_t)st.st_size, "%s: read %zu of %lld bytes", path, got, (long long)st.st_size);
+
     buf[got] = '\0';
+    die_if(strlen(buf) != got, "%s contains a NUL byte", path);
+
     return buf;
 }
 

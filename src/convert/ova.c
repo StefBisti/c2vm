@@ -3,6 +3,7 @@
 #include "core/util.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,10 +43,10 @@ static char *sha256_of(const char *path)
 // XML-escapes a string
 static const char *X(const char *s)
 {
-    char buf[512];
+    char buf[PATH_MAX];
     size_t w = 0;
 
-    for (const char *p = s; *p && w < sizeof buf - 8; p++)
+    for (const char *p = s; *p; p++)
     {
         const char *rep = NULL;
 
@@ -67,12 +68,16 @@ static const char *X(const char *s)
             rep = "&apos;";
             break;
         default:
-            buf[w++] = *p;
-            continue;
+            rep = NULL;
         }
 
-        size_t n = strlen(rep);
-        memcpy(buf + w, rep, n);
+        size_t n = rep ? strlen(rep) : 1;
+        die_if(w + n >= sizeof buf, "cannot escape an OVF value longer than %zu bytes", sizeof buf - 1);
+
+        if (rep)
+            memcpy(buf + w, rep, n);
+        else
+            buf[w] = *p;
         w += n;
     }
     buf[w] = '\0';
