@@ -7,7 +7,7 @@ const char *J(const char *s);
 // gets a field's value, unescaped
 char *json_get(const char *json, const char *key);
 
-// gets a field's value from section onwards
+// gets a neste field's value. the field is nested inside section
 char *json_get_in(const char *json, const char *section, const char *key);
 
 // reads a json file with malloc
