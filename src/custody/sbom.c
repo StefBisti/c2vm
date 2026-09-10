@@ -4,7 +4,6 @@
 
 static int cmp_pkg(const void *x, const void *y);
 
-#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +32,7 @@ void purl_ecosystem(const char *elem, char *out, size_t cap)
 
     snprintf(out, cap < i + 1 ? cap : i + 1, "%s", purl);
 }
-// reads SPDX file and returns plain array of {name, version, ecosystem}, dups removed
+
 size_t sbom_load(const char *path, struct pkg **out)
 {
     char *doc = json_slurp(path);

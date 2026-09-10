@@ -22,8 +22,6 @@ struct diff_opts
     const char *results;
 };
 
-/* Everything both report writers need. They took thirteen parameters each
-   before, in an order only the call site knew. */
 struct report
 {
     const struct diff_opts *o;
@@ -37,17 +35,14 @@ struct report
     size_t neco;
 };
 
-/* One row of the by-ecosystem table, counted with the helper sbom.c already
-   exports rather than four more inline loops. */
-static void eco_row(const struct report *r, const char *eco,
-                    size_t *in_a, size_t *in_b, size_t *added, size_t *removed)
+// one row of the by-ecosystem table
+static void eco_row(const struct report *r, const char *eco, size_t *in_a, size_t *in_b, size_t *added, size_t *removed)
 {
     *in_a = sbom_count_eco(r->a, r->na, eco);
     *in_b = sbom_count_eco(r->b, r->nb, eco);
     *added = sbom_count_eco(r->added, r->nadd, eco);
     *removed = sbom_count_eco(r->removed, r->nrem, eco);
 }
-
 
 static const struct
 {
@@ -61,6 +56,7 @@ static const struct
     {"cloud-init", {"cloud-init", "python3-", "cloud-guest", NULL}},
 };
 
+// get in which group belongs name
 static const char *classify(const char *name)
 {
     for (size_t g = 0; g < NELEMS(GROUPS); g++)
@@ -75,7 +71,7 @@ static const char *classify(const char *name)
     return "dependency";
 }
 
-/* Full identity: two entries are the same package only if the version agrees. */
+// two entries are the same package only if the version agrees
 static int cmp_full(const void *x, const void *y)
 {
     const struct pkg *a = x, *b = y;
@@ -88,7 +84,7 @@ static int cmp_full(const void *x, const void *y)
     return strcmp(a->version, b->version);
 }
 
-/* Identity ignoring version, which is how a version change is recognised. */
+// ignores version
 static int cmp_name(const struct pkg *a, const struct pkg *b)
 {
     int c = strcmp(a->eco, b->eco);
@@ -107,13 +103,10 @@ static void diff_usage(void)
         stderr);
 }
 
-/* Every ecosystem seen in either document, so the report has stable rows. */
-static size_t collect_ecos(const struct pkg *a, size_t na,
-                           const struct pkg *b, size_t nb,
-                           const char *ecos[], size_t cap)
+// gets every ecosystem seen in either document
+static size_t collect_ecos(const struct pkg *a, size_t na, const struct pkg *b, size_t nb, const char *ecos[], size_t cap)
 {
     size_t n = 0;
-
     for (int pass = 0; pass < 2; pass++)
     {
         const struct pkg *p = pass ? b : a;
@@ -225,14 +218,12 @@ static void write_markdown(const struct report *r)
        modules and vendored Python, which no functional bucket describes. */
     fprintf(f, "\n## Added `pkg:deb` packages, by function\n\n");
 
-    static const char *ORDER[] = {"kernel", "bootloader", "init",
-                                  "networking", "cloud-init", "dependency"};
+    static const char *ORDER[] = {"kernel", "bootloader", "init", "networking", "cloud-init", "dependency"};
     for (size_t g = 0; g < NELEMS(ORDER); g++)
     {
         size_t count = 0;
         for (size_t i = 0; i < r->nadd; i++)
-            if (!strcmp(r->added[i].eco, "deb") &&
-                !strcmp(classify(r->added[i].name), ORDER[g]))
+            if (!strcmp(r->added[i].eco, "deb") && !strcmp(classify(r->added[i].name), ORDER[g]))
                 count++;
 
         if (count == 0)
@@ -240,8 +231,7 @@ static void write_markdown(const struct report *r)
 
         fprintf(f, "### %s (%zu)\n\n", ORDER[g], count);
         for (size_t i = 0; i < r->nadd; i++)
-            if (!strcmp(r->added[i].eco, "deb") &&
-                !strcmp(classify(r->added[i].name), ORDER[g]))
+            if (!strcmp(r->added[i].eco, "deb") && !strcmp(classify(r->added[i].name), ORDER[g]))
                 fprintf(f, "- `%s` %s\n", r->added[i].name, r->added[i].version);
         fprintf(f, "\n");
     }
@@ -250,8 +240,7 @@ static void write_markdown(const struct report *r)
     {
         fprintf(f, "## Version changed\n\n| package | from | to |\n|---|---|---|\n");
         for (size_t i = 0; i < r->nchg; i++)
-            fprintf(f, "| `%s` | %s | %s |\n", r->changed[i].from.name,
-                    r->changed[i].from.version, r->changed[i].to.version);
+            fprintf(f, "| `%s` | %s | %s |\n", r->changed[i].from.name, r->changed[i].from.version, r->changed[i].to.version);
         fprintf(f, "\n");
     }
 
@@ -266,10 +255,11 @@ static void write_markdown(const struct report *r)
         die("cannot close %s: %s", path, strerror(errno));
 }
 
+// main function
 int cmd_diff(int argc, char *argv[])
 {
+    // start parse opts
     struct diff_opts o = {NULL, NULL, "results"};
-
     for (int i = 0; i < argc; i++)
     {
         const char *arg = argv[i];
@@ -314,6 +304,7 @@ int cmd_diff(int argc, char *argv[])
         diff_usage();
         return EXIT_USAGE;
     }
+    // end of parse opts
 
     struct pkg *a = NULL, *b = NULL;
     size_t na = sbom_load(o.a, &a);
@@ -329,7 +320,7 @@ int cmd_diff(int argc, char *argv[])
 
     size_t noa = 0, nob = 0, nunch = 0;
 
-    // Identical (name, version, ecosystem) on both sides is unchanged
+    // if identical (name, version, ecosystem) on both sides, then unchanged
     for (size_t i = 0, j = 0; i < na || j < nb;)
     {
         if (i == na)
@@ -385,9 +376,7 @@ int cmd_diff(int argc, char *argv[])
     size_t neco = collect_ecos(a, na, b, nb, ecos, NELEMS(ecos));
 
     run_ok("mkdir", "-p", o.results, NULL);
-
-    struct report r = {&o, a, b, na, nb, added, removed, nadd, nrem,
-                       changed, nchg, nunch, ecos, neco};
+    struct report r = {&o, a, b, na, nb, added, removed, nadd, nrem, changed, nchg, nunch, ecos, neco};
     write_json(&r);
     write_markdown(&r);
 
@@ -396,10 +385,7 @@ int cmd_diff(int argc, char *argv[])
     fprintf(stderr, "  changed:   %zu\n", nchg);
     fprintf(stderr, "  unchanged: %zu\n", nunch);
     for (size_t e = 0; e < neco; e++)
-    {
-        fprintf(stderr, "    %-10s +%zu\n", ecos[e],
-                sbom_count_eco(added, nadd, ecos[e]));
-    }
+        fprintf(stderr, "    %-10s +%zu\n", ecos[e], sbom_count_eco(added, nadd, ecos[e]));
 
     free(a);
     free(b);

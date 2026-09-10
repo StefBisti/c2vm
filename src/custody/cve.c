@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* How many packages the attribution table names before it stops. */
 #define TOP_PACKAGES 15
 
 struct cve_opts
@@ -53,7 +52,7 @@ static int cmp_key_qsort(const void *x, const void *y)
     return cmp_key(x, y);
 }
 
-/* Most findings first; Critical breaks a tie */
+// most findings first
 static int cmp_attribution(const void *x, const void *y)
 {
     const struct attribution *a = x, *b = y;
@@ -78,8 +77,7 @@ static void tally(const struct vuln *v, size_t n, size_t out[SEVERITY_COUNT][2])
     }
 }
 
-/* ponytail: linear scan per finding, O(n*rows). ~7500 findings over ~200
-   packages runs instantly; sort by (package, eco) first if that changes. */
+// linear scan per finding
 static size_t attribute(const struct vuln *v, size_t n, struct attribution **out)
 {
     struct attribution *rows = xmalloc((n + 1) * sizeof *rows);
@@ -240,10 +238,11 @@ static void write_markdown(const struct cve_opts *o,
         die("cannot close %s: %s", path, strerror(errno));
 }
 
+// main function
 int cmd_cve(int argc, char *argv[])
 {
+    // start parse opts
     struct cve_opts o = {NULL, NULL, "results"};
-
     for (int i = 0; i < argc; i++)
     {
         const char *arg = argv[i];
@@ -288,6 +287,7 @@ int cmd_cve(int argc, char *argv[])
         cve_usage();
         return EXIT_USAGE;
     }
+    // end of parse opts
 
     struct vuln *a = NULL, *b = NULL;
     size_t na = vuln_load(o.a, &a);
