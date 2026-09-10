@@ -75,7 +75,7 @@ static void predicate_write(const struct pub_opts *o, const char *path)
             "  \"subject\": [\n"
             "    { \"name\": \"%s\", \"digest\": { \"sha256\": \"%s\" } }\n"
             "  ],\n"
-            "  \"predicateType\": \"https://c2vm.dev/conversion/v1\",\n"
+            "  \"predicateType\": \"" C2VM_PREDICATE_TYPE "\",\n"
             "  \"predicate\": {\n"
             "    \"source\": { \"image\": \"%s\", \"digest\": \"%s\" },\n"
             "    \"backend\": \"%s\",\n"

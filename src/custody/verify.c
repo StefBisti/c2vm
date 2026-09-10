@@ -5,6 +5,7 @@
 #include "custody/publish.h"
 #include "custody/vuln.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,6 +86,12 @@ static void policy_load(const char *path, struct policy *p)
     die_if(!p->identity[0] || !p->issuer[0], "%s must set both 'identity' and 'issuer'", path);
 }
 
+static void count_one(const char *elem, void *ctx)
+{
+    (void)elem;
+    ++*(size_t *)ctx;
+}
+
 static void report(const char *what, bool ok, const char *detail)
 {
     fprintf(stderr, "  %s %-28s %s\n", ok ? "ok  " : "FAIL", what, detail ? detail : "");
@@ -151,9 +158,14 @@ static int cve_check(const char *grype, const struct policy *pol, const char *sp
         return 1;
     }
 
+
+    // private, random dir
+    char dir[] = "/tmp/c2vm-verify-XXXXXX";
+    die_if(!mkdtemp(dir), "cannot create a temporary directory: %s", strerror(errno));
+
     char sbom[PATH_MAX], reportfile[PATH_MAX];
-    snprintf(sbom, sizeof sbom, "/tmp/c2vm-verify-%d.spdx.json", (int)getpid());
-    snprintf(reportfile, sizeof reportfile, "/tmp/c2vm-verify-%d.cve.json", (int)getpid());
+    snprintf(sbom, sizeof sbom, "%s/sbom.spdx.json", dir);
+    snprintf(reportfile, sizeof reportfile, "%s/cve.json", dir);
 
     write_file(sbom, "%s", spdx);
     free(spdx);
@@ -167,6 +179,7 @@ static int cve_check(const char *grype, const struct policy *pol, const char *sp
 
     unlink(sbom);
     unlink(reportfile);
+    rmdir(dir);
 
     long counts[SEVERITY_COUNT][2] = {{0}};
     for (size_t i = 0; i < n; i++)
@@ -273,8 +286,8 @@ int cmd_verify(int argc, char *argv[])
     const char *subject = P("%s@%s", ref, digest);
 
     char *manifest = NULL;
-    char *fetch[] = {(char *)oras, "manifest", "fetch", (char *)ref, NULL};
-    die_if(run_argv_capture(fetch, &manifest) != 0, "cannot fetch the manifest for %s", ref);
+    char *fetch[] = {(char *)oras, "manifest", "fetch", (char *)subject, NULL};
+    die_if(run_argv_capture(fetch, &manifest) != 0, "cannot fetch the manifest for %s", subject);
 
     int failed = 0;
 
@@ -289,52 +302,53 @@ int cmd_verify(int argc, char *argv[])
     failed += !spdx_stmt;
 
     char *custom_stmt = attestation(cosign, &pol, subject, "custom");
-    report("conversion attestation", custom_stmt != NULL, "https://c2vm.dev/conversion/v1");
-    failed += !custom_stmt;
+    char *inner = custom_stmt ? json_get(custom_stmt, "Data") : NULL;
+    char *ptype = inner ? json_get(inner, "predicateType") : NULL;
+
+    bool custom_ok = ptype && !strcmp(ptype, C2VM_PREDICATE_TYPE);
+    report("conversion attestation", custom_ok, ptype ? ptype : C2VM_PREDICATE_TYPE);
+    failed += !custom_ok;
 
     // check digests
-    if (custom_stmt)
+    if (custom_ok)
     {
-        /* cosign's "custom" type stores the predicate as an escaped string;
-           json_get unescapes it, so it parses as a document in its own right. */
-        char *inner = json_get(custom_stmt, "Data");
-
         char *layer = json_get_in(manifest, "layers", "digest");
-        char *subj = inner ? json_get_in(inner, "subject", "sha256") : NULL;
+        char *subj = json_get_in(inner, "subject", "sha256");
 
-        bool bound = layer && subj && !strcmp(layer + 7, subj); /* skip "sha256:" */
-        report("disk digest binding", bound, subj ? subj : "no subject digest");
+        size_t nlayers = 0;
+        json_each_object(manifest, subject, "layers", count_one, &nlayers);
+
+        bool bound = nlayers == 1 && layer && subj && !strcmp(layer + 7, subj); /* skip "sha256:" */
+        report("disk digest binding", bound, nlayers == 1 ? (subj ? subj : "no subject digest") : P("%zu layers, expected 1", nlayers));
         failed += !bound;
 
-        char *claimed = inner ? json_get_in(inner, "source", "digest") : NULL;
+        char *claimed = json_get_in(inner, "source", "digest");
         char *annotated = json_get(manifest, "dev.c2vm.source-digest");
         bool src_ok = claimed && annotated && !strcmp(claimed, annotated);
         report("source image", src_ok, claimed ? claimed : "no source digest");
         failed += !src_ok;
 
-        if (inner)
-        {
-            char *image = json_get_in(inner, "source", "image");
-            char *kver = json_get_in(inner, "kernel", "version");
-            char *built = json_get_in(inner, "builder", "built_at");
-            fprintf(stderr, "\n  %s -> kernel %s, built %s\n", image ? image : "?",
-                    kver ? kver : "?", built ? built : "?");
-            free(image);
-            free(kver);
-            free(built);
-        }
+        char *image = json_get_in(inner, "source", "image");
+        char *kver = json_get_in(inner, "kernel", "version");
+        char *built = json_get_in(inner, "builder", "built_at");
+        fprintf(stderr, "\n  %s -> kernel %s, built %s\n", image ? image : "?",
+                kver ? kver : "?", built ? built : "?");
 
+        free(image);
+        free(kver);
+        free(built);
         free(layer);
         free(subj);
         free(claimed);
         free(annotated);
-        free(inner);
     }
 
     // grype over the signed sbom
     if (spdx_stmt)
         failed += cve_check(grype, &pol, spdx_stmt);
 
+    free(ptype);
+    free(inner);
     free(spdx_stmt);
     free(custom_stmt);
     free(manifest);

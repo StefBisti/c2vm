@@ -1,6 +1,9 @@
 #ifndef C2VM_PUBLISH_H
 #define C2VM_PUBLISH_H
 
+// the predicate type that attest writes and that verify demands
+#define C2VM_PREDICATE_TYPE "https://c2vm.dev/conversion/v1"
+
 // signing needs the digest, not the tag
 char *oci_digest(const char *oras, const char *ref);
 

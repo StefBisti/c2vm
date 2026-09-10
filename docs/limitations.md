@@ -107,16 +107,6 @@ Why: you want current vulnerability data, not the publisher's stale opinion. But
 
 **Workaround:** treat checks 1-5 (integrity, deterministic) and check 6 (quality, time-varying) as different questions. Pin the database with `GRYPE_DB_*` if you need a fixed answer.
 
-### Only `layers[0]` is checked
-
-The disk binding compares the signed hash against the first layer digest in the manifest. c2vm pushes exactly one layer, so it is correct today, but a manifest with several layers would have the others unchecked.
-
-### The inner statement's `predicateType` is not validated
-
-`verify` reads `predicate.Data` and trusts it is a c2vm conversion statement. A different `--type custom` attestation from the same pinned identity would be read as one.
-
-Why: identity pinning already limits who can produce one.
-
 ### No Secure Boot
 
 The disk boots via `--removable` GRUB with no signed shim. It will not boot a machine with Secure Boot enforcing.

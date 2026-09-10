@@ -322,4 +322,10 @@ exit 3 if any failed
 | **5** | the source digest matches what push recorded | that the source is trustworthy |
 | 6 | the signed SBOM scans within limits *today* | that it will tomorrow |
 
-**Known gaps:** the manifest is fetched by `ref` rather than by `subject`; only `layers[0]` is compared; the inner `predicateType` is never validated; `cve_check` writes to a predictable `/tmp` path. See [limitations.md](limitations.md).
+**What the checks refuse.** The manifest is fetched by the resolved digest, not
+by the tag, so a tag that moves mid-run cannot have the signature checked against
+one manifest and the bindings against another. The disk binding requires exactly
+one layer. A `--type custom` attestation only counts if its inner
+`predicateType` really is `https://c2vm.dev/conversion/v1`. And `cve_check`
+writes the signed SBOM into a private `mkdtemp` directory, since that file is
+what the CVE verdict is computed from.
