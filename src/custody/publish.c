@@ -141,10 +141,7 @@ static int parse_opts(int argc, char *argv[], struct pub_opts *o, int positional
         if (a[0] == '-')
         {
             if (i + 1 >= argc)
-            {
-                fprintf(stderr, "c2vm: %s needs a value\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("%s needs a value", a);
             const char *v = argv[++i];
 
             if (!strcmp(a, "--out"))
@@ -156,10 +153,7 @@ static int parse_opts(int argc, char *argv[], struct pub_opts *o, int positional
             else if (!strcmp(a, "--artifact"))
                 o->artifact = v;
             else
-            {
-                fprintf(stderr, "c2vm: unknown option '%s'\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("unknown option '%s'", a);
             continue;
         }
 
@@ -168,10 +162,7 @@ static int parse_opts(int argc, char *argv[], struct pub_opts *o, int positional
         else if (!o->ref)
             o->ref = a;
         else
-        {
-            fprintf(stderr, "c2vm: unexpected argument '%s'\n", a);
-            return EXIT_USAGE;
-        }
+            return usage_err("unexpected argument '%s'", a);
         seen++;
     }
 
@@ -183,7 +174,6 @@ static int parse_opts(int argc, char *argv[], struct pub_opts *o, int positional
 
 /* ------------------------------------------------------------------ push */
 
-
 /* Equivalent to:
 
     oras push <ref>
@@ -191,7 +181,6 @@ static int parse_opts(int argc, char *argv[], struct pub_opts *o, int positional
     --annotation dev.c2vm.source-digest=sha256:…
     --annotation org.opencontainers.image.created=…
     build/disk.qcow2:application/vnd.c2vm.disk.qcow2
-    
 */
 int cmd_push(int argc, char *argv[])
 {

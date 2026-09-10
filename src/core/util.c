@@ -31,6 +31,24 @@ _Noreturn void die(const char *fmt, ...)
     exit(EXIT_FAILURE);
 }
 
+const char *cmd_name = NULL;
+
+int usage_err(const char *fmt, ...)
+{
+    if (cmd_name)
+        fprintf(stderr, "c2vm %s: ", cmd_name);
+    else
+        fputs("c2vm: ", stderr);
+
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+
+    return EXIT_USAGE;
+}
+
 void warn(const char *fmt, ...)
 {
     fputs("c2vm: warning: ", stderr);

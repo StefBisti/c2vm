@@ -110,7 +110,8 @@ static char *verify_artifact(const struct scan_opts *s)
     const char *name = basename_of(s->artifact);
     char *want = json_get_in(s->meta, name, "sha256");
     die_if(!want, "%s/metadata/build.json records no artifact called '%s'; "
-            "rebuild with a version of c2vm that writes artifacts[]", s->outdir, name);
+                  "rebuild with a version of c2vm that writes artifacts[]",
+           s->outdir, name);
 
     if (s->no_verify)
         return want;
@@ -123,10 +124,10 @@ static char *verify_artifact(const struct scan_opts *s)
         *sp = '\0';
 
     die_if(strcmp(sum, want) != 0, "%s does not match build.json\n"
-            "  recorded: %s\n"
-            "  actual:   %s\n"
-            "The disk changed after it was built; rebuild before scanning.",
-            s->artifact, want, sum);
+                                   "  recorded: %s\n"
+                                   "  actual:   %s\n"
+                                   "The disk changed after it was built; rebuild before scanning.",
+           s->artifact, want, sum);
 
     fprintf(stderr, "  sha256 ok: %s\n", want);
     free(sum);
@@ -222,10 +223,7 @@ static int parse_opts(int argc, char *argv[], struct scan_opts *s)
         if (a[0] == '-')
         {
             if (i + 1 >= argc)
-            {
-                fprintf(stderr, "c2vm scan: %s needs a value\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("%s needs a value", a);
             const char *v = argv[++i];
 
             if (!strcmp(a, "--out"))
@@ -239,43 +237,30 @@ static int parse_opts(int argc, char *argv[], struct scan_opts *s)
             else if (!strcmp(a, "--source"))
                 s->source = v;
             else
-            {
-                fprintf(stderr, "c2vm scan: unknown option '%s'\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("unknown option '%s'", a);
             continue;
         }
 
         if (s->artifact)
-        {
-            fprintf(stderr, "c2vm scan: unexpected argument '%s'\n", a);
-            return EXIT_USAGE;
-        }
+            return usage_err("unexpected argument '%s'", a);
         s->artifact = a;
     }
 
     if (!s->artifact)
     {
-        fprintf(stderr, "c2vm scan: no artifact given\n");
+        usage_err("no artifact given");
         scan_usage();
         return EXIT_USAGE;
     }
 
     if (access(s->artifact, R_OK) != 0)
-    {
-        fprintf(stderr, "c2vm scan: cannot read %s: %s\n", s->artifact, strerror(errno));
-        return EXIT_USAGE;
-    }
+        return usage_err("cannot read %s: %s", s->artifact, strerror(errno));
 
     // syft would report zero packages if it scans a .ova tar
     const char *dot = strrchr(basename_of(s->artifact), '.');
     if (dot && !strcmp(dot, ".ova"))
-    {
-        fprintf(stderr,
-                "c2vm scan: cannot scan an OVA directly; scan the qcow2 the\n"
-                "           same build produced, or extract disk.vmdk first\n");
-        return EXIT_USAGE;
-    }
+
+        return usage_err("cannot scan an OVA directly; scan the qcow2 the\nsame build produced, or extract disk.vmdk first");
 
     return 0;
 }
@@ -328,8 +313,8 @@ int cmd_scan(int argc, char *argv[])
         db_schema = json_get(db_json, "schemaVersion");
 
         die_if(!db_built || !*db_built, "grype has no vulnerability database.\n"
-                "Run `grype db update` as your own user, not under sudo, "
-                "then scan again.");
+                                        "Run `grype db update` as your own user, not under sudo, "
+                                        "then scan again.");
 
         fprintf(stderr, "  grype:    %s (db %s, built %s)\n",
                 grype_ver ? grype_ver : "?",

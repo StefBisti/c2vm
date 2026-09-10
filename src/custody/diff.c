@@ -162,6 +162,7 @@ static void write_json(const struct report *r)
                 J(classify(r->added[i].name)), i + 1 < r->nadd ? "," : "");
     fprintf(f, "  ],\n");
 
+    size_t ndeb = sbom_count_eco(r->added, r->nadd, "deb");
     fprintf(f, "  \"added_deb\": [\n");
     for (size_t i = 0, w = 0; i < r->nadd; i++)
     {
@@ -171,8 +172,7 @@ static void write_json(const struct report *r)
         fprintf(f, "    { \"name\": \"%s\", \"version\": \"%s\", "
                    "\"ecosystem\": \"%s\", \"group\": \"%s\" }%s\n",
                 J(r->added[i].name), J(r->added[i].version), J(r->added[i].eco),
-                J(classify(r->added[i].name)),
-                w < sbom_count_eco(r->added, r->nadd, "deb") ? "," : "");
+                J(classify(r->added[i].name)), w < ndeb ? "," : "");
     }
     fprintf(f, "  ],\n");
 
@@ -283,17 +283,11 @@ int cmd_sbom_diff(int argc, char *argv[])
         if (arg[0] == '-')
         {
             if (i + 1 >= argc)
-            {
-                fprintf(stderr, "c2vm sbom-diff: %s needs a value\n", arg);
-                return EXIT_USAGE;
-            }
+                return usage_err("%s needs a value", arg);
             if (!strcmp(arg, "--results"))
                 o.results = argv[++i];
             else
-            {
-                fprintf(stderr, "c2vm sbom-diff: unknown option '%s'\n", arg);
-                return EXIT_USAGE;
-            }
+                return usage_err("unknown option '%s'", arg);
             continue;
         }
 
@@ -302,15 +296,12 @@ int cmd_sbom_diff(int argc, char *argv[])
         else if (!o.b)
             o.b = arg;
         else
-        {
-            fprintf(stderr, "c2vm sbom-diff: unexpected argument '%s'\n", arg);
-            return EXIT_USAGE;
-        }
+            return usage_err("unexpected argument '%s'", arg);
     }
 
     if (!o.a || !o.b)
     {
-        fprintf(stderr, "c2vm sbom-diff: two SBOMs are required\n");
+        usage_err("two SBOMs are required");
         diff_usage();
         return EXIT_USAGE;
     }

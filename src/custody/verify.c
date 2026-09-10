@@ -231,10 +231,7 @@ int cmd_verify(int argc, char *argv[])
         if (a[0] == '-')
         {
             if (i + 1 >= argc)
-            {
-                fprintf(stderr, "c2vm: %s needs a value\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("%s needs a value", a);
             const char *v = argv[++i];
 
             if (!strcmp(a, "--policy"))
@@ -246,18 +243,12 @@ int cmd_verify(int argc, char *argv[])
             else if (!strcmp(a, "--grype"))
                 grype_override = v;
             else
-            {
-                fprintf(stderr, "c2vm: unknown option '%s'\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("unknown option '%s'", a);
             continue;
         }
 
         if (ref)
-        {
-            fprintf(stderr, "c2vm: unexpected argument '%s'\n", a);
-            return EXIT_USAGE;
-        }
+            return usage_err("unexpected argument '%s'", a);
         ref = a;
     }
 
@@ -352,7 +343,7 @@ int cmd_verify(int argc, char *argv[])
     if (failed)
     {
         fprintf(stderr, "\n%d check(s) failed\n", failed);
-        return EXIT_POLICY;
+        return EXIT_CHECK;
     }
 
     fputs("\nall checks passed\n", stderr);

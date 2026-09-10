@@ -21,9 +21,9 @@ static const char *OVMF_CODE, *OVMF_VARS;
 static void find_ovmf(void)
 {
     static const char *CANDIDATES[][2] = {
-        {"/usr/share/OVMF/OVMF_CODE_4M.fd",     "/usr/share/OVMF/OVMF_VARS_4M.fd"},
-        {"/usr/share/OVMF/OVMF_CODE.fd",        "/usr/share/OVMF/OVMF_VARS.fd"},
-        {"/usr/share/edk2/ovmf/OVMF_CODE.fd",   "/usr/share/edk2/ovmf/OVMF_VARS.fd"},
+        {"/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_VARS_4M.fd"},
+        {"/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/OVMF/OVMF_VARS.fd"},
+        {"/usr/share/edk2/ovmf/OVMF_CODE.fd", "/usr/share/edk2/ovmf/OVMF_VARS.fd"},
         {"/usr/share/edk2/x64/OVMF_CODE.4m.fd", "/usr/share/edk2/x64/OVMF_VARS.4m.fd"},
         {"/usr/share/qemu/edk2-x86_64-code.fd", "/usr/share/qemu/edk2-i386-vars.fd"},
     };
@@ -81,7 +81,7 @@ static const char *disk_format(const char *path)
     const char *dot = strrchr(path, '.');
     if (!dot)
     {
-        fprintf(stderr, "c2vm boot-test: cannot tell the format of %s from its name\n", path);
+        usage_err("cannot tell the format of %s from its name", path);
         return NULL;
     }
 
@@ -92,7 +92,7 @@ static const char *disk_format(const char *path)
     if (!strcmp(dot, ".vmdk"))
         return "vmdk";
 
-    fprintf(stderr, "c2vm boot-test: unsupported artifact type '%s'\n", dot);
+    usage_err("unsupported artifact type '%s'", dot);
     return NULL;
 }
 
@@ -333,7 +333,7 @@ static void wait_for_boot(const struct test_opts *t, pid_t qemu, const char *log
 
     print_tail(logpath, 50);
     fprintf(stderr, "c2vm: timed out after %ds (serial login: %s)\n", t->timeout, saw_login ? "yes" : "no");
-    exit(EXIT_BOOT_TIMEOUT);
+    exit(EXIT_CHECK);
 }
 
 // reports one assertion and dies if it failed
@@ -404,10 +404,7 @@ static int parse_opts(int argc, char *argv[], struct test_opts *t)
         if (a[0] == '-')
         {
             if (i + 1 >= argc)
-            {
-                fprintf(stderr, "c2vm boot-test: %s needs a value\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("%s needs a value", a);
             const char *v = argv[++i];
 
             if (!strcmp(a, "--ssh-key"))
@@ -423,57 +420,36 @@ static int parse_opts(int argc, char *argv[], struct test_opts *t)
             else if (!strcmp(a, "--timeout"))
                 t->timeout = atoi(v);
             else
-            {
-                fprintf(stderr, "c2vm boot-test: unknown option '%s'\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("unknown option '%s'", a);
             continue;
         }
 
         if (t->artifact)
-        {
-            fprintf(stderr, "c2vm boot-test: unexpected argument '%s'\n", a);
-            return EXIT_USAGE;
-        }
+            return usage_err("unexpected argument '%s'", a);
         t->artifact = a;
     }
 
     if (!t->artifact)
     {
-        fprintf(stderr, "c2vm boot-test: no artifact given\n");
+        usage_err("no artifact given");
         test_usage();
         return EXIT_USAGE;
     }
 
     if (!t->ssh_key)
-    {
-        fprintf(stderr, "c2vm boot-test: --ssh-key is required\n");
-        return EXIT_USAGE;
-    }
+        return usage_err("--ssh-key is required");
 
-    if(has_suffix(t->ssh_key, ".pub")) {
-        fprintf(stderr, "c2vm boot-test: --ssh-key wants the private key, not %s\n", t->ssh_key);
-        return EXIT_USAGE;
-    }
+    if (has_suffix(t->ssh_key, ".pub"))
+        return usage_err("--ssh-key wants the private key, not %s", t->ssh_key);
 
     if (t->timeout <= 0 || t->timeout > 86400)
-    {
-        fprintf(stderr, "c2vm boot-test: --timeout must be 1..86400\n");
-        return EXIT_USAGE;
-    }
+        return usage_err("--timeout must be 1..86400");
 
     if (access(t->artifact, R_OK) != 0)
-    {
-        fprintf(stderr, "c2vm boot-test: cannot read %s: %s\n",
-                t->artifact, strerror(errno));
-        return EXIT_USAGE;
-    }
+        return usage_err("cannot read %s: %s", t->artifact, strerror(errno));
+
     if (access(t->ssh_key, R_OK) != 0)
-    {
-        fprintf(stderr, "c2vm boot-test: cannot read %s: %s\n",
-                t->ssh_key, strerror(errno));
-        return EXIT_USAGE;
-    }
+        return usage_err("cannot read %s: %s", t->ssh_key, strerror(errno));
 
     // ssh runs with BatchMode=yes and cannot prompt
     char *probe[] = {"sh", "-c",
@@ -482,14 +458,10 @@ static int parse_opts(int argc, char *argv[], struct test_opts *t)
     char *pub = NULL;
     int locked = run_argv_capture(probe, &pub);
     free(pub);
+
     if (locked != 0)
-    {
-        fprintf(stderr, "c2vm boot-test: %s is passphrase-protected; "
-                        "ssh cannot prompt for it\n",
-                t->ssh_key);
-        return EXIT_USAGE;
-    }
-    
+        return usage_err("%s is passphrase-protected; ssh cannot prompt for it", t->ssh_key);
+
     if (!has_suffix(t->artifact, ".ova") && !disk_format(t->artifact))
         return EXIT_USAGE;
 

@@ -54,8 +54,7 @@ static void usage(FILE *out)
         "  -h, --help            Show this help\n"
         "  --version             Show the version\n"
         "\n"
-        "exit codes: 0 ok, 1 runtime failure, 2 usage error\n"
-        "            3 verification or policy failure\n"
+        "exit codes: 0 ok, 1 runtime failure, 2 usage error, 3 verification\n"
         "\n",
         out);
 }
@@ -93,10 +92,11 @@ int main(int argc, char *argv[])
     const struct command *c = lookup(cmd);
     if (!c)
     {
-        fprintf(stderr, "c2vm: unknown command '%s'\n", cmd);
+        usage_err("unknown command '%s'", cmd);
         fprintf(stderr, "try: c2vm --help\n");
         return EXIT_USAGE;
     }
 
+    cmd_name = c->name;
     return c->handler(argc - 2, argv + 2);
 }

@@ -252,17 +252,11 @@ int cmd_cve_diff(int argc, char *argv[])
         if (arg[0] == '-')
         {
             if (i + 1 >= argc)
-            {
-                fprintf(stderr, "c2vm cve-diff: %s needs a value\n", arg);
-                return EXIT_USAGE;
-            }
+                return usage_err("%s needs a value", arg);
             if (!strcmp(arg, "--results"))
                 o.results = argv[++i];
             else
-            {
-                fprintf(stderr, "c2vm cve-diff: unknown option '%s'\n", arg);
-                return EXIT_USAGE;
-            }
+                return usage_err("unknown option '%s'", arg);
             continue;
         }
 
@@ -271,15 +265,12 @@ int cmd_cve_diff(int argc, char *argv[])
         else if (!o.b)
             o.b = arg;
         else
-        {
-            fprintf(stderr, "c2vm cve-diff: unexpected argument '%s'\n", arg);
-            return EXIT_USAGE;
-        }
+            return usage_err("unexpected argument '%s'", arg);
     }
 
     if (!o.a || !o.b)
     {
-        fprintf(stderr, "c2vm cve-diff: two grype reports are required\n");
+        usage_err("two grype reports are required");
         cve_usage();
         return EXIT_USAGE;
     }

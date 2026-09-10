@@ -62,7 +62,7 @@ struct build_opts
 
     char osname[128]; // guest NAME + VERSION_ID, for the OVF
     char kver[64];    // kernel version
-    char gver[64]; // grub version
+    char gver[64];    // grub version
 };
 
 // build options contain the "want" format. Ex. qcow,ova contains ova
@@ -109,7 +109,7 @@ static bool readable(const char *flag, const char *path)
     FILE *f = fopen(path, "r");
     if (!f)
     {
-        fprintf(stderr, "c2vm build: %s: cannot read %s: %s\n", flag, path, strerror(errno));
+        usage_err("%s: cannot read %s: %s", flag, path, strerror(errno));
         return false;
     }
     fclose(f);
@@ -179,46 +179,34 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
                 dst = &o->pw_file;
             else if (!strcmp(a, "--backend"))
                 dst = &o->backend;
-
             else
-            {
-                fprintf(stderr, "c2vm build: unknown option '%s'\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("unknown option '%s'", a);
 
             if (i + 1 >= argc)
-            {
-                fprintf(stderr, "c2vm build: %s needs a value\n", a);
-                return EXIT_USAGE;
-            }
+                return usage_err("%s needs a value", a);
             *dst = argv[++i];
             continue;
         }
 
         if (o->image)
-        {
-            fprintf(stderr, "c2vm build: unexpected argument '%s'\n", a);
-            return EXIT_USAGE;
-        }
+            return usage_err("unexpected argument '%s'", a);
         o->image = a;
     }
 
     if (!o->image)
     {
-        fprintf(stderr, "c2vm build: no image reference given\n");
+        usage_err("no image reference given");
         build_usage();
         return EXIT_USAGE;
     }
 
     if (!has_format(o, "qcow2") && !has_format(o, "raw") && !has_format(o, "ova"))
     {
-        fprintf(stderr, "c2vm build: --format must include qcow2, raw or ova\n");
-        return EXIT_USAGE;
+        return usage_err("--format must include qcow2, raw or ova");
     }
     if (strcmp(o->backend, "native") != 0)
     {
-        fprintf(stderr, "c2vm build: unknown backend '%s' (only: native)\n", o->backend);
-        return EXIT_USAGE;
+        return usage_err("unknown backend '%s' (only: native)", o->backend);
     }
 
     if (o->ssh_key && !readable("--ssh-key", o->ssh_key))

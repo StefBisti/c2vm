@@ -9,7 +9,9 @@
 #define NELEMS(a) (sizeof(a) / sizeof(a)[0])
 
 #define EXIT_USAGE 2
-#define EXIT_POLICY 3
+
+// A check this tool performs did not pass
+#define EXIT_CHECK 3
 
 // print commands instead of running them
 extern bool dry_run;
@@ -21,12 +23,18 @@ void step(const char *fmt, ...);
 _Noreturn void die(const char *fmt, ...);
 
 // if (cond) die(...) as one line. A macro, so the arguments stay unevaluated unless cond holds
-#define die_if(cond, ...)   \
-    do                      \
-    {                       \
-        if (cond)           \
-            die(__VA_ARGS__);\
+#define die_if(cond, ...)     \
+    do                        \
+    {                         \
+        if (cond)             \
+            die(__VA_ARGS__); \
     } while (0)
+
+// the running subcommand, for usage_err. main sets it before dispatch
+extern const char *cmd_name;
+
+// prints "c2vm <cmd>: ..." and returns EXIT_USAGE
+int usage_err(const char *fmt, ...);
 
 // same prefix as die, but the run carries on
 void warn(const char *fmt, ...);
