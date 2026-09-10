@@ -133,8 +133,7 @@ static void write_json(const struct report *r)
     fprintf(stderr, "  > %s\n", path);
 
     FILE *f = fopen(path, "w");
-    if (!f)
-        die("cannot write %s: %s", path, strerror(errno));
+    die_if(!f, "cannot write %s: %s", path, strerror(errno));
 
     fprintf(f, "{\n");
     fprintf(f, "  \"a\": { \"path\": \"%s\", \"packages\": %zu },\n", J(o->a), r->na);
@@ -180,8 +179,7 @@ static void write_json(const struct report *r)
                 i + 1 < r->nchg ? "," : "");
     fprintf(f, "  ]\n}\n");
 
-    if (fclose(f) != 0)
-        die("cannot close %s: %s", path, strerror(errno));
+    die_if(fclose(f) != 0, "cannot close %s: %s", path, strerror(errno));
 }
 
 static void write_markdown(const struct report *r)
@@ -191,8 +189,7 @@ static void write_markdown(const struct report *r)
     fprintf(stderr, "  > %s\n", path);
 
     FILE *f = fopen(path, "w");
-    if (!f)
-        die("cannot write %s: %s", path, strerror(errno));
+    die_if(!f, "cannot write %s: %s", path, strerror(errno));
 
     fprintf(f, "# SBOM delta\n\n");
     fprintf(f, "- baseline: `%s` (%zu packages)\n", o->a, r->na);
@@ -251,8 +248,7 @@ static void write_markdown(const struct report *r)
             fprintf(f, "- `%s` %s\n", r->removed[i].name, r->removed[i].version);
     }
 
-    if (fclose(f) != 0)
-        die("cannot close %s: %s", path, strerror(errno));
+    die_if(fclose(f) != 0, "cannot close %s: %s", path, strerror(errno));
 }
 
 // main function

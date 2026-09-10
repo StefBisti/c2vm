@@ -20,7 +20,7 @@ void step(const char *fmt, ...)
     fputc('\n', stderr);
 }
 
-void die(const char *fmt, ...)
+_Noreturn void die(const char *fmt, ...)
 {
     fputs("c2vm: ", stderr);
     va_list ap;
@@ -44,24 +44,21 @@ void warn(const char *fmt, ...)
 void *xmalloc(size_t n)
 {
     void *p = malloc(n);
-    if (!p)
-        die("out of memory");
+    die_if(!p, "out of memory");
     return p;
 }
 
 void *xrealloc(void *p, size_t n)
 {
     void *q = realloc(p, n);
-    if (!q)
-        die("out of memory");
+    die_if(!q, "out of memory");
     return q;
 }
 
 char *xstrdup(const char *s)
 {
     char *p = strdup(s);
-    if (!p)
-        die("out of memory");
+    die_if(!p, "out of memory");
     return p;
 }
 
@@ -80,8 +77,7 @@ const char *P(const char *fmt, ...)
 char *read_file(const char *path, size_t max)
 {
     FILE *f = fopen(path, "r");
-    if (!f)
-        die("cannot read %s: %s", path, strerror(errno));
+    die_if(!f, "cannot read %s: %s", path, strerror(errno));
 
     char *buf = xmalloc(max + 1);
 
@@ -115,16 +111,14 @@ void write_file(const char *path, const char *fmt, ...)
         return;
 
     FILE *f = fopen(path, "w");
-    if (!f)
-        die("cannot write %s: %s", path, strerror(errno));
+    die_if(!f, "cannot write %s: %s", path, strerror(errno));
 
     va_list ap;
     va_start(ap, fmt);
     vfprintf(f, fmt, ap);
     va_end(ap);
 
-    if (fclose(f) != 0)
-        die("cannot close %s: %s", path, strerror(errno));
+    die_if(fclose(f) != 0, "cannot close %s: %s", path, strerror(errno));
 }
 
 const char *basename_of(const char *path)
@@ -187,7 +181,6 @@ const char *tool_path(const char *tool, const char *override)
     }
 
     die("cannot find %s; install it or pass --%s <path>", tool, tool);
-    return NULL;
 }
 
 static int b64val(unsigned char c)

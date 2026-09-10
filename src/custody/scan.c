@@ -109,12 +109,8 @@ static char *verify_artifact(const struct scan_opts *s)
 {
     const char *name = basename_of(s->artifact);
     char *want = json_get_in(s->meta, name, "sha256");
-    if (!want)
-    {
-        die("%s/metadata/build.json records no artifact called '%s'; "
-            "rebuild with a version of c2vm that writes artifacts[]",
-            s->outdir, name);
-    }
+    die_if(!want, "%s/metadata/build.json records no artifact called '%s'; "
+            "rebuild with a version of c2vm that writes artifacts[]", s->outdir, name);
 
     if (s->no_verify)
         return want;
@@ -126,14 +122,11 @@ static char *verify_artifact(const struct scan_opts *s)
     if (sp)
         *sp = '\0';
 
-    if (strcmp(sum, want) != 0)
-    {
-        die("%s does not match build.json\n"
+    die_if(strcmp(sum, want) != 0, "%s does not match build.json\n"
             "  recorded: %s\n"
             "  actual:   %s\n"
             "The disk changed after it was built; rebuild before scanning.",
             s->artifact, want, sum);
-    }
 
     fprintf(stderr, "  sha256 ok: %s\n", want);
     free(sum);
@@ -295,8 +288,7 @@ int cmd_scan(int argc, char *argv[])
     if (rc != 0)
         return rc;
 
-    if (geteuid() != 0)
-        die("scan must run as root (guestmount)");
+    die_if(geteuid() != 0, "scan must run as root (guestmount)");
 
     cleanup_init();
 
@@ -307,8 +299,7 @@ int cmd_scan(int argc, char *argv[])
 
     char *image = json_get_in(opts.meta, "source", "image");
     char *digest = json_get_in(opts.meta, "source", "digest");
-    if (!image || !digest)
-        die("%s/metadata/build.json records no source image", opts.outdir);
+    die_if(!image || !digest, "%s/metadata/build.json records no source image", opts.outdir);
 
     char *artifact_sha = verify_artifact(&opts);
 
@@ -317,8 +308,7 @@ int cmd_scan(int argc, char *argv[])
     char *ver_json = run_capture(syft, "version", "-o", "json", NULL);
     char *syft_ver = json_get(ver_json, "version");
     char *syft_schema = json_get(ver_json, "schemaVersion");
-    if (!syft_ver)
-        die("cannot read a version out of `%s version -o json`", syft);
+    die_if(!syft_ver, "cannot read a version out of `%s version -o json`", syft);
     fprintf(stderr, "  syft:     %s (spdx schema %s)\n", syft_ver, syft_schema ? syft_schema : "?");
 
     char *db_json = NULL, *grype_ver = NULL, *db_built = NULL, *db_schema = NULL;
@@ -337,8 +327,7 @@ int cmd_scan(int argc, char *argv[])
         db_built = json_get(db_json, "built");
         db_schema = json_get(db_json, "schemaVersion");
 
-        if (!db_built || !*db_built)
-            die("grype has no vulnerability database.\n"
+        die_if(!db_built || !*db_built, "grype has no vulnerability database.\n"
                 "Run `grype db update` as your own user, not under sudo, "
                 "then scan again.");
 

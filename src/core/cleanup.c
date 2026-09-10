@@ -33,8 +33,7 @@ static size_t action_count;
 
 static struct action *push(enum action_kind kind, const char *path)
 {
-    if (action_count >= MAX_ACTIONS)
-        die("cleanup stack overflow (more than %d actions)", MAX_ACTIONS);
+    die_if(action_count >= MAX_ACTIONS, "cleanup stack overflow (more than %d actions)", MAX_ACTIONS);
 
     struct action *a = &actions[action_count++];
     a->kind = kind;

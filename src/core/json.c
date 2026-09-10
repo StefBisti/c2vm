@@ -45,8 +45,7 @@ const char *J(const char *s)
         }
 
         size_t n = strlen(rep);
-        if (w + n >= sizeof buf)
-            die("cannot escape a value longer than %zu bytes", sizeof buf - 1);
+        die_if(w + n >= sizeof buf, "cannot escape a value longer than %zu bytes", sizeof buf - 1);
         memcpy(buf + w, rep, n);
         w += n;
     }
@@ -89,16 +88,13 @@ char *json_get_in(const char *json, const char *section, const char *key)
 char *json_slurp(const char *path)
 {
     struct stat st;
-    if (stat(path, &st) != 0)
-        die("cannot stat %s: %s", path, strerror(errno));
+    die_if(stat(path, &st) != 0, "cannot stat %s: %s", path, strerror(errno));
 
     FILE *f = fopen(path, "rb");
-    if (!f)
-        die("cannot read %s: %s", path, strerror(errno));
+    die_if(!f, "cannot read %s: %s", path, strerror(errno));
 
     char *buf = malloc((size_t)st.st_size + 1);
-    if (!buf)
-        die("out of memory reading %s (%lld bytes)", path, (long long)st.st_size);
+    die_if(!buf, "out of memory reading %s (%lld bytes)", path, (long long)st.st_size);
 
     size_t got = fread(buf, 1, (size_t)st.st_size, f);
     fclose(f);

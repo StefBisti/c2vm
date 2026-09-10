@@ -27,14 +27,12 @@ char *oci_digest(const char *oras, const char *ref)
     char *argv[] = {(char *)oras, "manifest", "fetch", "--descriptor", (char *)ref, NULL};
 
     char *out = NULL;
-    if (run_argv_capture(argv, &out) != 0)
-        die("cannot resolve %s; is it pushed, and are you logged in?", ref);
+    die_if(run_argv_capture(argv, &out) != 0, "cannot resolve %s; is it pushed, and are you logged in?", ref);
 
     char *digest = json_get(out, "digest");
     free(out);
 
-    if (!digest || strncmp(digest, "sha256:", 7) != 0)
-        die("%s did not resolve to a digest", ref);
+    die_if(!digest || strncmp(digest, "sha256:", 7) != 0, "%s did not resolve to a digest", ref);
 
     return digest;
 }
@@ -62,17 +60,14 @@ static void predicate_write(const struct pub_opts *o, const char *path)
 
     const char *name = basename_of(o->artifact ? o->artifact : "disk.qcow2");
     char *sha = json_get_in(meta, name, "sha256");
-    if (!sha)
-        die("%s/metadata/build.json records no artifact called '%s'", o->outdir, name);
+    die_if(!sha, "%s/metadata/build.json records no artifact called '%s'", o->outdir, name);
 
     char *diff = json_slurp(P("%s/sbom-diff.json", o->results));
     char *added = json_array(diff, "added");
-    if (!added)
-        die("%s/sbom-diff.json has no \"added\" array; run c2vm sbom-diff first", o->results);
+    die_if(!added, "%s/sbom-diff.json has no \"added\" array; run c2vm sbom-diff first", o->results);
 
     FILE *f = fopen(path, "w");
-    if (!f)
-        die("cannot write %s: %s", path, strerror(errno));
+    die_if(!f, "cannot write %s: %s", path, strerror(errno));
 
     fprintf(f,
             "{\n"
@@ -102,8 +97,7 @@ static void predicate_write(const struct pub_opts *o, const char *path)
             J(version), J(built_at),
             added);
 
-    if (fclose(f) != 0)
-        die("cannot close %s: %s", path, strerror(errno));
+    die_if(fclose(f) != 0, "cannot close %s: %s", path, strerror(errno));
 
     fprintf(stderr, "  > %s\n", path);
 

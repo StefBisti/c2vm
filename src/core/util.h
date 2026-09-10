@@ -18,7 +18,15 @@ extern bool dry_run;
 void step(const char *fmt, ...);
 
 // error + cleanup + exit(1)
-void die(const char *fmt, ...);
+_Noreturn void die(const char *fmt, ...);
+
+// if (cond) die(...) as one line. A macro, so the arguments stay unevaluated unless cond holds
+#define die_if(cond, ...)   \
+    do                      \
+    {                       \
+        if (cond)           \
+            die(__VA_ARGS__);\
+    } while (0)
 
 // same prefix as die, but the run carries on
 void warn(const char *fmt, ...);

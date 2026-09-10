@@ -82,8 +82,7 @@ static void policy_load(const char *path, struct policy *p)
 
     free(doc);
 
-    if (!p->identity[0] || !p->issuer[0])
-        die("%s must set both 'identity' and 'issuer'", path);
+    die_if(!p->identity[0] || !p->issuer[0], "%s must set both 'identity' and 'issuer'", path);
 }
 
 static void report(const char *what, bool ok, const char *detail)
@@ -284,8 +283,7 @@ int cmd_verify(int argc, char *argv[])
 
     char *manifest = NULL;
     char *fetch[] = {(char *)oras, "manifest", "fetch", (char *)ref, NULL};
-    if (run_argv_capture(fetch, &manifest) != 0)
-        die("cannot fetch the manifest for %s", ref);
+    die_if(run_argv_capture(fetch, &manifest) != 0, "cannot fetch the manifest for %s", ref);
 
     int failed = 0;
 

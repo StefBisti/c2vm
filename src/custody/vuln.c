@@ -53,12 +53,10 @@ size_t vuln_load(const char *path, struct vuln **out)
     char *doc = json_slurp(path);
 
     char *key = strstr(doc, "\"matches\"");
-    if (!key)
-        die("%s has no \"matches\" array; is it a grype JSON report?", path);
+    die_if(!key, "%s has no \"matches\" array; is it a grype JSON report?", path);
 
     char *p = strchr(key + strlen("\"matches\""), '[');
-    if (!p)
-        die("%s: \"matches\" is not an array", path);
+    die_if(!p, "%s: \"matches\" is not an array", path);
     p++;
 
     size_t cap = 256, n = 0;
@@ -136,10 +134,7 @@ size_t vuln_load(const char *path, struct vuln **out)
 
     free(doc);
 
-    if (!closed)
-    {
-        die("%s: truncated or malformed, the matches array never closes (%zu findings read before the end of the file)", path, n);
-    }
+    die_if(!closed, "%s: truncated or malformed, the matches array never closes (%zu findings read before the end of the file)", path, n);
     size_t unique = n ? dedupe_sorted(vs, n, sizeof *vs, cmp_vuln) : 0;
     if (unique != n)
     {

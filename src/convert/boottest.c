@@ -103,8 +103,7 @@ static const char *unpack_ova(const struct test_opts *t)
 
     const char *dir = P("%s/boot-test", t->outdir);
     run_ok("mkdir", "-p", dir, NULL);
-    if (run("tar", "-xf", t->artifact, "-C", dir, "disk.vmdk", NULL) != 0)
-        die("%s has no disk.vmdk member; boot-test reads OVAs c2vm built", t->artifact);
+    die_if(run("tar", "-xf", t->artifact, "-C", dir, "disk.vmdk", NULL) != 0, "%s has no disk.vmdk member; boot-test reads OVAs c2vm built", t->artifact);
 
     const char *overlay = P("%s/overlay.qcow2", dir);
     run_ok("rm", "-f", overlay, NULL);
@@ -180,8 +179,7 @@ static pid_t spawn_qemu(const struct test_opts *t, const char *disk, const char 
     fputc('\n', stderr);
 
     pid_t pid = fork();
-    if (pid < 0)
-        die("fork: %s", strerror(errno));
+    die_if(pid < 0, "fork: %s", strerror(errno));
 
     if (pid == 0)
     {
@@ -256,8 +254,7 @@ static char *ssh_out(const struct test_opts *t, const char *cmd)
 
     char *out = NULL;
     int rc = run_argv_capture(argv, &out);
-    if (rc != 0)
-        die("guest command failed (exit %d): %s", rc, cmd);
+    die_if(rc != 0, "guest command failed (exit %d): %s", rc, cmd);
 
     return out;
 }
@@ -343,8 +340,7 @@ static void wait_for_boot(const struct test_opts *t, pid_t qemu, const char *log
 static void check(const char *what, bool ok, const char *detail)
 {
     fprintf(stderr, "  [%s] %-22s %s\n", ok ? "ok" : "FAIL", what, detail);
-    if (!ok)
-        die("assertion failed: %s", what);
+    die_if(!ok, "assertion failed: %s", what);
 }
 
 // asserts the running guest matches what build.json recorded
@@ -356,8 +352,7 @@ static void assert_guest(const struct test_opts *t)
     char *kernel_pkg = json_get_in(t->meta, "kernel", "package");
     char *want_kver = json_get_in(t->meta, "kernel", "version");
 
-    if (!want_uuid || !kernel_pkg || !want_kver)
-        die("%s/metadata/build.json is missing fields boot-test needs; rebuild with this version of c2vm", t->outdir);
+    die_if(!want_uuid || !kernel_pkg || !want_kver, "%s/metadata/build.json is missing fields boot-test needs; rebuild with this version of c2vm", t->outdir);
 
     char *state = ssh_out(t, "timeout 60 systemctl is-system-running --wait || true");
     check("systemd state", !strcmp(state, "running") || !strcmp(state, "degraded"), state);
@@ -520,8 +515,7 @@ int cmd_boot_test(int argc, char *argv[])
     if (!t.user)
     {
         t.user = json_get_in(t.meta, "flags", "user");
-        if (!t.user)
-            die("%s/metadata/build.json records no user; pass --user", t.outdir);
+        die_if(!t.user, "%s/metadata/build.json records no user; pass --user", t.outdir);
     }
     fprintf(stderr, "  user:     %s\n", t.user);
 

@@ -25,8 +25,7 @@ static unsigned long long file_size(const char *path)
         return 0;
 
     struct stat st;
-    if (stat(path, &st) != 0)
-        die("cannot stat %s: %s", path, strerror(errno));
+    die_if(stat(path, &st) != 0, "cannot stat %s: %s", path, strerror(errno));
     return (unsigned long long)st.st_size;
 }
 

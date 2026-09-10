@@ -235,10 +235,8 @@ static int parse_opts(int argc, char *argv[], struct build_opts *o)
 static void prepare_outdir(const struct build_opts *o)
 {
     // safety net in order to not rm -rf soemthing wrong
-    if (!*o->outdir || !strcmp(o->outdir, "/"))
-        die("--out '%s' refused", o->outdir);
-    if (access(o->outdir, F_OK) == 0 && access(P("%s/metadata", o->outdir), F_OK) != 0)
-        die("%s exists but is not a c2vm output directory (no metadata/)", o->outdir);
+    die_if(!*o->outdir || !strcmp(o->outdir, "/"), "--out '%s' refused", o->outdir);
+    die_if(access(o->outdir, F_OK) == 0 && access(P("%s/metadata", o->outdir), F_OK) != 0, "%s exists but is not a c2vm output directory (no metadata/)", o->outdir);
 
     step("preparing %s", o->outdir);
     run("umount", "-R", P("%s/mnt", o->outdir), NULL);
@@ -255,8 +253,7 @@ static void extract_rootfs(const struct build_opts *o)
     char *digest = run_capture("scripts/extract-rootfs.sh", o->image, P("%s/rootfs", o->outdir), NULL);
     char *host = run_capture("uname", "-srm", NULL);
 
-    if (!dry_run && strncmp(digest, "sha256:", 7) != 0)
-        die("extract-rootfs.sh did not return a digest: %.60s", digest);
+    die_if(!dry_run && strncmp(digest, "sha256:", 7) != 0, "extract-rootfs.sh did not return a digest: %.60s", digest);
 
     char stamp[32];
     time_t now = time(NULL);
@@ -385,8 +382,7 @@ static void apt_install(const struct build_opts *o)
     if (extra)
         for (char *t = strtok(extra, ","); t != NULL; t = strtok(NULL, ","))
         {
-            if (n >= NELEMS(argv) - 1)
-                die("too many packages (limit is %zu)", NELEMS(argv) - 1);
+            die_if(n >= NELEMS(argv) - 1, "too many packages (limit is %zu)", NELEMS(argv) - 1);
             argv[n++] = t;
         }
 
@@ -453,8 +449,7 @@ static char *hash_password(const char *plain)
 
     unsigned char raw[16];
     FILE *f = fopen("/dev/urandom", "r");
-    if (!f || fread(raw, 1, sizeof raw, f) != sizeof raw)
-        die("cannot read /dev/urandom");
+    die_if(!f || fread(raw, 1, sizeof raw, f) != sizeof raw, "cannot read /dev/urandom");
     fclose(f);
 
     /* 256 is a multiple of 64, so the modulo below is unbiased. */
@@ -465,8 +460,8 @@ static char *hash_password(const char *plain)
     setting[3 + sizeof raw] = '\0';
 
     char *hash = crypt(plain, setting);
-    if (!hash || hash[0] == '*') /* libxcrypt's failure signal */
-        die("password hashing failed");
+    /* hash[0] == '*' is libxcrypt's failure signal */
+    die_if(!hash || hash[0] == '*', "password hashing failed");
 
     return xstrdup(hash);
 }
@@ -482,8 +477,7 @@ static char *read_source_digest(const struct build_opts *o)
 
     char *digest = json_get(json, "source_digest");
     free(json);
-    if (!digest)
-        die("%s does not contain a source_digest", path);
+    die_if(!digest, "%s does not contain a source_digest", path);
     return digest;
 }
 
@@ -504,20 +498,17 @@ static void ssh_key_block(const struct build_opts *o, char *out, size_t cap)
         if (*l == '\0' || *l == '#')
             continue;
 
-        if (strchr(l, '"') || strchr(l, '\\'))
-            die("--ssh-key: %s contains a quote or backslash", o->ssh_key);
+        die_if(strchr(l, '"') || strchr(l, '\\'), "--ssh-key: %s contains a quote or backslash", o->ssh_key);
 
         if (w == 0)
             w = (size_t)snprintf(out, cap, "    ssh_authorized_keys:\n");
 
         int n = snprintf(out + w, cap - w, "      - \"%s\"\n", l);
-        if (n < 0 || (size_t)n >= cap - w)
-            die("--ssh-key: %s has too many keys", o->ssh_key);
+        die_if(n < 0 || (size_t)n >= cap - w, "--ssh-key: %s has too many keys", o->ssh_key);
         w += (size_t)n;
     }
 
-    if (w == 0)
-        die("--ssh-key: %s contains no keys", o->ssh_key);
+    die_if(w == 0, "--ssh-key: %s contains no keys", o->ssh_key);
 
     free(keys);
 }
@@ -585,8 +576,7 @@ static void configure_cloud_init(const struct build_opts *o)
     if (o->pw_file)
     {
         char *plain = read_file(o->pw_file, 8192);
-        if (plain[0] == '\0')
-            die("--root-password: %s is empty", o->pw_file);
+        die_if(plain[0] == '\0', "--root-password: %s is empty", o->pw_file);
 
         pwhash = hash_password(plain);
         memset(plain, 0, strlen(plain));
@@ -673,8 +663,7 @@ static void artifact_list(const struct build_opts *o, char *out, size_t cap)
                          (unsigned long long)st.st_size);
         free(sum);
 
-        if (n < 0 || (size_t)n >= cap - w)
-            die("artefact list does not fit in %zu bytes", cap);
+        die_if(n < 0 || (size_t)n >= cap - w, "artefact list does not fit in %zu bytes", cap);
 
         w += (size_t)n;
         sep = ",\n";
@@ -692,8 +681,7 @@ static void write_metadata(const struct build_opts *o)
     char arts[2048];
     artifact_list(o, arts, sizeof arts);
 
-    if (!dry_run && strncmp(digest, "sha256:", 7) != 0)
-        die("%s/metadata/source.json holds no digest: %.60s", o->outdir, digest);
+    die_if(!dry_run && strncmp(digest, "sha256:", 7) != 0, "%s/metadata/source.json holds no digest: %.60s", o->outdir, digest);
 
     char stamp[32];
     time_t now = time(NULL);
@@ -776,14 +764,12 @@ int cmd_build(int argc, char *argv[])
         return rc;
 
     /* Every step past this point needs losetup, mount and chroot. */
-    if (!dry_run && geteuid() != 0)
-        die("build must run as root");
+    die_if(!dry_run && geteuid() != 0, "build must run as root");
 
     // a private mount namespace for atomicity
     if (!dry_run)
     {
-        if (unshare(CLONE_NEWNS) != 0)
-            die("cannot create mount namespace: %s", strerror(errno));
+        die_if(unshare(CLONE_NEWNS) != 0, "cannot create mount namespace: %s", strerror(errno));
         run_ok("mount", "--make-rprivate", "/", NULL);
     }
 

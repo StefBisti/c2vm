@@ -23,8 +23,7 @@ static void collect(const char *prog, va_list ap, char *argv[])
         const char *a = va_arg(ap, const char *);
         if (!a)
             break;
-        if (n + 1 >= MAX_ARGS)
-            die("too many arguments");
+        die_if(n + 1 >= MAX_ARGS, "too many arguments");
         argv[n++] = (char *)a;
     }
     argv[n] = NULL;
@@ -51,12 +50,10 @@ static int spawn(char *const argv[], char **out)
     }
 
     int fds[2] = {-1, -1};
-    if (out && pipe(fds) != 0)
-        die("pipe: %s", strerror(errno));
+    die_if(out && pipe(fds) != 0, "pipe: %s", strerror(errno));
 
     pid_t pid = fork();
-    if (pid < 0)
-        die("fork: %s", strerror(errno));
+    die_if(pid < 0, "fork: %s", strerror(errno));
 
     if (pid == 0)
     {
@@ -96,8 +93,7 @@ static int spawn(char *const argv[], char **out)
     }
 
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0)
-        die("waitpid: %s", strerror(errno));
+    die_if(waitpid(pid, &status, 0) < 0, "waitpid: %s", strerror(errno));
 
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
@@ -121,8 +117,7 @@ void run_ok(const char *prog, ...)
     va_end(ap);
 
     int rc = spawn(argv, NULL);
-    if (rc != 0)
-        die("%s failed (exit %d)", prog, rc);
+    die_if(rc != 0, "%s failed (exit %d)", prog, rc);
 }
 
 char *run_capture(const char *prog, ...)
@@ -135,8 +130,7 @@ char *run_capture(const char *prog, ...)
 
     char *out = NULL;
     int rc = spawn(argv, &out);
-    if (rc != 0)
-        die("%s failed (exit %d)", prog, rc);
+    die_if(rc != 0, "%s failed (exit %d)", prog, rc);
     return out;
 }
 
@@ -153,6 +147,5 @@ int run_argv_capture(char *const argv[], char **out)
 void run_argv_ok(char *const argv[])
 {
     int rc = spawn(argv, NULL);
-    if (rc != 0)
-        die("%s failed (exit %d)", argv[0], rc);
+    die_if(rc != 0, "%s failed (exit %d)", argv[0], rc);
 }

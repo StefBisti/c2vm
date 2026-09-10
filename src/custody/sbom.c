@@ -35,12 +35,10 @@ size_t sbom_load(const char *path, struct pkg **out)
     char *doc = json_slurp(path);
 
     char *key = strstr(doc, "\"packages\"");
-    if (!key)
-        die("%s has no \"packages\" array", path);
+    die_if(!key, "%s has no \"packages\" array", path);
 
     char *p = strchr(key + strlen("\"packages\""), '[');
-    if (!p)
-        die("%s: \"packages\" is not an array", path);
+    die_if(!p, "%s: \"packages\" is not an array", path);
     p++;
 
     size_t cap = 256, n = 0;
@@ -111,13 +109,10 @@ size_t sbom_load(const char *path, struct pkg **out)
 
     free(doc);
 
-    if (!closed)
-        die("%s: truncated or malformed — the packages array never closes "
-            "(%zu entries read before the end of the file)",
-            path, n);
+    die_if(!closed, "%s: truncated or malformed — the packages array never closes "
+            "(%zu entries read before the end of the file)", path, n);
 
-    if (n == 0)
-        die("%s: no packages found; is it an SPDX document?", path);
+    die_if(n == 0, "%s: no packages found; is it an SPDX document?", path);
 
     size_t unique = dedupe_sorted(pkgs, n, sizeof *pkgs, cmp_pkg);
     if (unique != n)

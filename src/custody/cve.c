@@ -125,8 +125,7 @@ static void write_json(const struct cve_opts *o,
     fprintf(stderr, "  > %s\n", path);
 
     FILE *f = fopen(path, "w");
-    if (!f)
-        die("cannot write %s: %s", path, strerror(errno));
+    die_if(!f, "cannot write %s: %s", path, strerror(errno));
 
     fprintf(f, "{\n");
     fprintf(f, "  \"a\": { \"path\": \"%s\", \"findings\": %zu },\n", J(o->a), na);
@@ -172,8 +171,7 @@ static void write_json(const struct cve_opts *o,
                 J(gone[i].eco), i + 1 < ngone ? "," : "");
     fprintf(f, "  ]\n}\n");
 
-    if (fclose(f) != 0)
-        die("cannot close %s: %s", path, strerror(errno));
+    die_if(fclose(f) != 0, "cannot close %s: %s", path, strerror(errno));
 }
 
 static void write_markdown(const struct cve_opts *o,
@@ -188,8 +186,7 @@ static void write_markdown(const struct cve_opts *o,
     fprintf(stderr, "  > %s\n", path);
 
     FILE *f = fopen(path, "w");
-    if (!f)
-        die("cannot write %s: %s", path, strerror(errno));
+    die_if(!f, "cannot write %s: %s", path, strerror(errno));
 
     fprintf(f, "# CVE delta\n\n");
     fprintf(f, "- baseline: `%s` (%zu findings)\n", o->a, na);
@@ -234,8 +231,7 @@ static void write_markdown(const struct cve_opts *o,
     if (shown == 0)
         fprintf(f, "\nNone.\n");
 
-    if (fclose(f) != 0)
-        die("cannot close %s: %s", path, strerror(errno));
+    die_if(fclose(f) != 0, "cannot close %s: %s", path, strerror(errno));
 }
 
 // main function
