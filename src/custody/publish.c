@@ -11,7 +11,6 @@
 #include <string.h>
 #include <time.h>
 
-/* Three commands over one artifact, so they share their options. */
 struct pub_opts
 {
     const char *artifact; /* push only */
@@ -21,13 +20,10 @@ struct pub_opts
     const char *tool;    /* --oras or --cosign override */
 };
 
-/*
- * Everything downstream signs a digest, never a tag: a tag can be repointed
- * at different content the moment after it is signed, and the signature
- * would still verify against the new thing.
- */
 char *oci_digest(const char *oras, const char *ref)
 {
+    // returns something like: {"mediaType":"application/vnd.oci.image.manifest.v1+json",
+    // "digest":"sha256:3f14b53626a53abd5cb7e5cb5835de3894641ef870f32aebbafed7b9aee67a8c","size":692}stefan@stef
     char *argv[] = {(char *)oras, "manifest", "fetch", "--descriptor", (char *)ref, NULL};
 
     char *out = NULL;
@@ -43,13 +39,7 @@ char *oci_digest(const char *oras, const char *ref)
     return digest;
 }
 
-/*
- * The in-toto statement this project exists to produce. Its subject is the
- * disk's hash and its predicate is every decision the build made, so a
- * verifier holding only the artifact can establish what it is and where it
- * came from. Fields come from build.json, which is why that file is written
- * last, after the artifacts it now names.
- */
+// creates the in-toto attestation
 static void predicate_write(const struct pub_opts *o, const char *path)
 {
     step("building the conversion predicate");
@@ -75,11 +65,6 @@ static void predicate_write(const struct pub_opts *o, const char *path)
     if (!sha)
         die("%s/metadata/build.json records no artifact called '%s'", o->outdir, name);
 
-    /*
-     * Embedded verbatim rather than re-derived: the list the predicate
-     * claims must be the same list c2vm sbom-diff published, byte for byte, or
-     * the attestation and the results contradict each other.
-     */
     char *diff = json_slurp(P("%s/sbom-diff.json", o->results));
     char *added = json_array(diff, "added");
     if (!added)
@@ -141,6 +126,7 @@ static void predicate_write(const struct pub_opts *o, const char *path)
     free(sha);
 }
 
+// used for all 3
 static int parse_opts(int argc, char *argv[], struct pub_opts *o, int positionals)
 {
     o->artifact = NULL;
@@ -201,6 +187,16 @@ static int parse_opts(int argc, char *argv[], struct pub_opts *o, int positional
 
 /* ------------------------------------------------------------------ push */
 
+
+/* Equivalent to:
+
+    oras push <ref>
+    --artifact-type application/vnd.c2vm.disk.v1+json
+    --annotation dev.c2vm.source-digest=sha256:…
+    --annotation org.opencontainers.image.created=…
+    build/disk.qcow2:application/vnd.c2vm.disk.qcow2
+    
+*/
 int cmd_push(int argc, char *argv[])
 {
     struct pub_opts o;
@@ -219,11 +215,6 @@ int cmd_push(int argc, char *argv[])
 
     step("pushing %s to %s", o.artifact, o.ref);
 
-    /*
-     * A disk is not a container image, so it goes up as an OCI artifact with
-     * its own media types. Nothing will ever try to run it; the registry is
-     * being used as content-addressed storage that cosign can sign.
-     */
     char *cmd[16];
     size_t n = 0;
     cmd[n++] = (char *)oras;

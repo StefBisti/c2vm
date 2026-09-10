@@ -10,9 +10,6 @@ static int cmp_pkg(const void *x, const void *y);
 #include <string.h>
 #include <sys/stat.h>
 
-
-
-
 /* purl looks like pkg:deb/ubuntu/zlib1g@1.3 — this lifts out "deb". */
 void purl_ecosystem(const char *elem, char *out, size_t cap)
 {
@@ -139,7 +136,6 @@ static int cmp_pkg(const void *x, const void *y)
     c = strcmp(a->name, b->name);
     return c ? c : strcmp(a->version, b->version);
 }
-
 
 size_t sbom_count_eco(const struct pkg *p, size_t n, const char *eco)
 {

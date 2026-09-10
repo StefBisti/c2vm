@@ -11,14 +11,6 @@
 #include <string.h>
 #include <unistd.h>
 
-/*
- * The consuming end of the chain. Everything the other commands recorded is
- * now on a registry and signed; this reads it back holding nothing but a
- * reference, which is the only test that proves the custody actually
- * transfers. The 600 MB disk is never downloaded: every claim lives in the
- * manifest and the two attestations.
- */
-
 struct policy
 {
     char identity[256];
@@ -54,12 +46,7 @@ static char *trim(char *s)
     return s;
 }
 
-/*
- * A four-key subset of YAML, read line by line. A parser is not worth a
- * dependency here: the policy is two identity strings and two integers, and
- * the first colon always separates key from value even when the value is a
- * URL that contains one.
- */
+// loads the policy from the yml file
 static void policy_load(const char *path, struct policy *p)
 {
     p->identity[0] = p->issuer[0] = '\0';
@@ -104,11 +91,6 @@ static void report(const char *what, bool ok, const char *detail)
     fprintf(stderr, "  %s %-28s %s\n", ok ? "ok  " : "FAIL", what, detail ? detail : "");
 }
 
-/*
- * Runs one cosign subcommand under the policy's identity constraints. The
- * identity flags are the whole point: without them cosign will happily
- * confirm that *somebody* signed this.
- */
 static int cosign_run(const char *cosign, const struct policy *pol, const char *subject,
                       const char *sub, const char *type, char **out)
 {
@@ -140,15 +122,13 @@ static int cosign_run(const char *cosign, const struct policy *pol, const char *
     return rc;
 }
 
-/* Verifies one attestation and returns its in-toto statement, or NULL. */
-static char *attestation(const char *cosign, const struct policy *pol, const char *subject,
-                         const char *type)
+// checks attestation and returns in-toto statement
+static char *attestation(const char *cosign, const struct policy *pol, const char *subject, const char *type)
 {
     char *env = NULL;
     if (cosign_run(cosign, pol, subject, "verify-attestation", type, &env) != 0)
         return NULL;
 
-    /* A DSSE envelope: the statement is one base64 field of it. */
     char *payload = json_get(env, "payload");
     free(env);
     if (!payload)
@@ -180,8 +160,7 @@ static int cve_check(const char *grype, const struct policy *pol, const char *sp
     free(spdx);
 
     grype_env();
-    char *argv[] = {(char *)grype, (char *)P("sbom:%s", sbom), "-o",
-                    (char *)P("json=%s", reportfile), NULL};
+    char *argv[] = {(char *)grype, (char *)P("sbom:%s", sbom), "-o", (char *)P("json=%s", reportfile), NULL};
     run_argv_ok(argv);
 
     struct vuln *vs = NULL;
@@ -190,11 +169,6 @@ static int cve_check(const char *grype, const struct policy *pol, const char *sp
     unlink(sbom);
     unlink(reportfile);
 
-    /* Two columns, as c2vm cve-diff reports them: every ecosystem, and the deb
-       packages the conversion actually installed. NVD matches the kernel by
-       CPE against every CVE ever filed against it, so the all-ecosystem
-       number is an order of magnitude larger and is not what a policy on
-       this project's own output should gate. */
     long counts[SEVERITY_COUNT][2] = {{0}};
     for (size_t i = 0; i < n; i++)
     {
@@ -237,8 +211,10 @@ static int cve_check(const char *grype, const struct policy *pol, const char *sp
     return failed;
 }
 
+// main function
 int cmd_verify(int argc, char *argv[])
 {
+    // start of parse opts
     const char *ref = NULL;
     const char *policy_path = "policy/default.yaml";
     const char *cosign_override = NULL, *oras_override = NULL, *grype_override = NULL;
@@ -291,6 +267,7 @@ int cmd_verify(int argc, char *argv[])
         verify_usage();
         return EXIT_USAGE;
     }
+    // end of parse opts
 
     struct policy pol;
     policy_load(policy_path, &pol);
@@ -312,12 +289,12 @@ int cmd_verify(int argc, char *argv[])
 
     int failed = 0;
 
-    /* 1. Signed, by the identity the policy names. */
+    // signed by the identity in the policy
     bool signed_ok = cosign_run(cosign, &pol, subject, "verify", NULL, NULL) == 0;
     report("signature", signed_ok, digest);
     failed += !signed_ok;
 
-    /* 2/3. Both attestations, each verified under the same identity. */
+    // both attestations, both under the same identity
     char *spdx_stmt = attestation(cosign, &pol, subject, "spdxjson");
     report("sbom attestation", spdx_stmt != NULL, "https://spdx.dev/Document");
     failed += !spdx_stmt;
@@ -326,12 +303,7 @@ int cmd_verify(int argc, char *argv[])
     report("conversion attestation", custom_stmt != NULL, "https://c2vm.dev/conversion/v1");
     failed += !custom_stmt;
 
-    /*
-     * 4/5. The two bindings that make the attestation about *this* artifact.
-     * cosign's own subject is the manifest digest, so on its own it says
-     * nothing about the bytes inside; the conversion statement names the disk
-     * hash, and that must be the layer the registry is serving.
-     */
+    // check digests
     if (custom_stmt)
     {
         /* cosign's "custom" type stores the predicate as an escaped string;
@@ -370,7 +342,7 @@ int cmd_verify(int argc, char *argv[])
         free(inner);
     }
 
-    /* 6. Policy, over the SBOM that was actually signed. */
+    // grype over the signed sbom
     if (spdx_stmt)
         failed += cve_check(grype, &pol, spdx_stmt);
 
