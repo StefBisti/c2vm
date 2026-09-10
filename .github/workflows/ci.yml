@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcrypt-dev
+
+      - name: build
+        run: make CFLAGS="-std=c11 -Wall -Wextra -O2 -Werror"
+
+      - name: version
+        run: ./c2vm --version
+
+      - name: dry-run build
+        run: ./c2vm build ubuntu:24.04 --dry-run --format qcow2,ova --out /tmp/dry
+
+      - name: usage errors exit 2
+        run: |
+          set -e
+          for args in "nosuchcommand" "build --bogus" "scan" "boot-test" "sbom-diff" "cve-diff" "verify --bogus"; do
+            ./c2vm $args >/dev/null 2>&1 && { echo "expected failure: $args"; exit 1; }
+            rc=$?
+            [ "$rc" = 2 ] || { echo "$args exited $rc, expected 2"; exit 1; }
+          done
+
+      - name: help and version exit 0
+        run: |
+          ./c2vm --help >/dev/null
+          ./c2vm --version >/dev/null
+          ./c2vm build --help >/dev/null
