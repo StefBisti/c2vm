@@ -172,7 +172,28 @@ built locally. Exits 3 on any failure.
 The policy's `identity` and `issuer` are the point: without them cosign confirms
 only that *somebody* signed it.
 
----
+#### The policy file
+
+Four keys, YAML-ish - the parser splits on the first colon and ignores
+everything after a `#`.
+
+```yaml
+identity: you@example.com                  # who is allowed to have signed it
+issuer: https://github.com/login/oauth     # the OIDC provider that vouched
+max_critical: 5                            # deb-only limits; -1 or absent = unlimited
+max_high: 200
+```
+
+`identity` and `issuer` are required — `verify` dies without both, because a
+signature check with no identity confirms only that *somebody* signed it.
+
+The limits count **deb packages only**. The all-ecosystem numbers are printed
+beside them but never gated, because the kernel is matched a second time by
+CPE against NVD and inflates them by an order of magnitude
+([why](../docs/examples/cve-diff.md)).
+
+Leave headroom between the measured count and the limit, or a single newly
+published advisory fails every verification until you edit the policy.
 
 ### Global flags
 
@@ -187,3 +208,4 @@ only that *somebody* signed it.
 | 1 | runtime failure |
 | 2 | usage error |
 | 3 | verification, policy or boot-test timeout |
+
