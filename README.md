@@ -106,10 +106,64 @@ curl -i http://localhost:8080 # expect HTTP/1.1 200 OK, Server: nginx/1.28.x and
 ./c2vm attest ghcr.io/stefbisti/c2vm-nginx:latest --out build-nginx --results results-nginx
 ./c2vm verify ghcr.io/stefbisti/c2vm-nginx:latest
 
+```
 
+## Using a published c2vm disk
 
+The published disk contains no credentials. You choose your own at first boot by attaching a cloud-init seed:
+
+```bash
+
+# !!! anything between {} is custom data
+
+# Verify the disk before doing anything
+
+c2vm verify {ghcr.io/stefbisti/c2vm-demo:latest} # exit 0 = trusted, otherwise it is unsafe
+oras pull {ghcr.io/stefbisti/c2vm-demo:latest}
+
+# Build your seed
+
+mkdir -p seed
+PWHASH=$(openssl passwd -6)
+
+cat > seed/user-data <<EOF
+#cloud-config
+users:
+  - name: {stefan}
+    groups: [adm, sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: "$PWHASH"
+    ssh_authorized_keys:
+      - "$(cat {/path/to/your/ssh_key.pub})"
+
+ssh_pwauth: false
+EOF
+
+echo "instance-id: iid-$(hostname)-$(date +%s)" > seed/meta-data
+
+genisoimage -output seed.iso -V cidata -r -J seed
+ in settings->storage, 
+# Boot
+
+cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
+
+qemu-system-x86_64 -machine q35 -enable-kvm -cpu host -m 2048 -smp 2 \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+  -drive if=pflash,format=raw,file=vars.fd \
+  -drive file=disk.qcow2,format=qcow2,if=virtio \
+  -drive file=seed.iso,media=cdrom \
+  -netdev user,id=net0,hostfwd=tcp::2222-:22 \
+  -device virtio-net-pci,netdev=net0 \
+  -nographic -no-reboot
+
+# Log in via ssh:
+ssh -p 2222 {stefan}@127.0.0.1
 
 ```
+
+
 
 ## Layout
 
