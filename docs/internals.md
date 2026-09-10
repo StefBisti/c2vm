@@ -270,7 +270,7 @@ cosign sign --yes <ref>@<digest>
 
 ```
 predicate_write     # read build.json (never recompute)
-                    # embed sbom-diff.json's added[] verbatim
+                    # embed sbom-diff.json's added_deb[] verbatim
                     # results/predicate.json, an in-toto statement
                     # whose subject is the DISK's sha256
 

@@ -85,14 +85,6 @@ Why: it exists to assert the guest booted and matches `build.json`, not to do an
 
 Workaround: run QEMU by hand with extra `hostfwd` rules. See [tutorial.md](tutorial.md) step 3.
 
-### `attest` always names `disk.qcow2`
-
-`cmd_attest` hardcodes the artifact name. Build `--format ova` only and the predicate names a file that does not exist, so `verify`'s disk binding fails.
-
-Why: an oversight, not a decision.
-
-Workaround: always build `qcow2` alongside `ova`, and push the qcow2.
-
 ### `--format raw` is a no-op
 
 `disk.raw` is always produced as the intermediate. The flag exists so the format validation accepts it.

@@ -144,6 +144,7 @@ attach the SBOM and conversion attestations
 
 | flag | |
 |---|---|
+| `--artifact <name>` | which artifact the predicate is about (default: `disk.qcow2`) |
 | `--out <dir>` | directory holding `metadata/build.json` (default: `build`) |
 | `--results <dir>` | directory holding the SBOM and diff (default: `results`) |
 | `--cosign <path>` | cosign binary (default: found on PATH) |

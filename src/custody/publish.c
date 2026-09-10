@@ -63,8 +63,8 @@ static void predicate_write(const struct pub_opts *o, const char *path)
     die_if(!sha, "%s/metadata/build.json records no artifact called '%s'", o->outdir, name);
 
     char *diff = json_slurp(P("%s/sbom-diff.json", o->results));
-    char *added = json_array(diff, "added");
-    die_if(!added, "%s/sbom-diff.json has no \"added\" array; run c2vm sbom-diff first", o->results);
+    char *added = json_array(diff, "added_deb");
+    die_if(!added, "%s/sbom-diff.json has no \"added_deb\" array; re-run c2vm sbom-diff", o->results);
 
     FILE *f = fopen(path, "w");
     die_if(!f, "cannot write %s: %s", path, strerror(errno));
@@ -153,6 +153,8 @@ static int parse_opts(int argc, char *argv[], struct pub_opts *o, int positional
                 o->results = v;
             else if (!strcmp(a, "--oras") || !strcmp(a, "--cosign"))
                 o->tool = v;
+            else if (!strcmp(a, "--artifact"))
+                o->artifact = v;
             else
             {
                 fprintf(stderr, "c2vm: unknown option '%s'\n", a);
@@ -271,7 +273,7 @@ int cmd_attest(int argc, char *argv[])
     struct pub_opts o;
     if (parse_opts(argc, argv, &o, 1) != 0)
     {
-        fputs("usage: c2vm attest <oci-ref> [--out dir] [--results dir] [--cosign path]\n", stderr);
+        fputs("usage: c2vm attest <oci-ref> [--artifact name] [--out dir] [--results dir] [--cosign path]\n", stderr);
         return EXIT_USAGE;
     }
 
@@ -279,7 +281,8 @@ int cmd_attest(int argc, char *argv[])
 
     const char *oras = tool_path("oras", NULL);
 
-    o.artifact = "disk.qcow2";
+    if (!o.artifact)
+        o.artifact = "disk.qcow2";
 
     const char *pred = P("%s/predicate.json", o.results);
     predicate_write(&o, pred);

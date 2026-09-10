@@ -162,6 +162,20 @@ static void write_json(const struct report *r)
                 J(classify(r->added[i].name)), i + 1 < r->nadd ? "," : "");
     fprintf(f, "  ],\n");
 
+    fprintf(f, "  \"added_deb\": [\n");
+    for (size_t i = 0, w = 0; i < r->nadd; i++)
+    {
+        if (strcmp(r->added[i].eco, "deb") != 0)
+            continue;
+        w++;
+        fprintf(f, "    { \"name\": \"%s\", \"version\": \"%s\", "
+                   "\"ecosystem\": \"%s\", \"group\": \"%s\" }%s\n",
+                J(r->added[i].name), J(r->added[i].version), J(r->added[i].eco),
+                J(classify(r->added[i].name)),
+                w < sbom_count_eco(r->added, r->nadd, "deb") ? "," : "");
+    }
+    fprintf(f, "  ],\n");
+
     fprintf(f, "  \"removed\": [\n");
     for (size_t i = 0; i < r->nrem; i++)
         fprintf(f, "    { \"name\": \"%s\", \"version\": \"%s\", "
