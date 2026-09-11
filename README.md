@@ -4,30 +4,18 @@
 
 ## What it is
 
-Convertor from a Debian-family OCI image to a bootable VM disk (QCOW2, OVA), while preserving and verifying the conversion supply-chain.
+Convertor from a Debian-family OCI image into a bootable VM disk (QCOW2, OVA), while preserving and verifying the conversion supply-chain.
 
 ## The scenario
 
-Someone sends you a 600MB `appliance.ova`. Even though it runs, you question:
+Someone sends you an `appliance.ova` and even though it runs, you question:
 
 - What exactly is inside it?
 - Who built it, and from what?
-- Has anything changed since they built it?
-- How much did the conversion add?
+- Has anything changed inside it since they built it? Is it still safe?
+- How much did the conversion add (packages and cves)?
 
-c2vm produces a disk where you can answer everything from the artifact itself without even downloading it.
-
-## The numbers
-
-Converting `ubuntu@sha256:2260313b…` (`ubuntu:latest` on 2026-09-09) to a bootable QCOW2, measured with syft 1.51.1 and grype 0.118.0 (vulnerability database built 2026-09-09). Debian packages and CVEs are counted over `pkg:deb` only — see [why there are two columns](docs/examples/cve-diff.md):
-
-| | container | VM disk |
-|---|---|---|
-| Debian packages | 87 | 215 (**+128**) |
-| Critical CVEs | 0 | **4** |
-| High CVEs | 0 | **87** |
-
-Sample reports: [docs/examples](docs/examples/)
+c2vm produces a disk where you can figure out everything above from the artifact itself without even downloading it.
 
 ## How it works
 
@@ -43,29 +31,50 @@ disk.qcow2 / disk.ova
   |  push         registry as content-addressed storage
   |  sign         keyless, via Sigstore
   |  attest       SBOM + a conversion statement, both signed
-  | verify        six checks from a reference alone — the disk is never downloaded
+  |
+  |  verify       six checks from a reference alone — the disk is never downloaded
 ```
 
 ## Quickstart
+
+### For local-usage (only the conversion)
 
 ```bash
 make tools # installs syft, grype, cosign, oras
 make
 
-sudo ./c2vm build ubuntu:24.04 --format qcow2,ova --ssh-key ~/.ssh/id_ed25519.pub
-./c2vm boot-test build/disk.qcow2 --ssh-key ~/.ssh/id_ed25519
+sudo ./c2vm build ubuntu:24.04 --format qcow2,ova --ssh-key /path/to/ssh/key.pub
+# Key must not be pass-phrase protected. The public key will be ingrained in the disk
+./c2vm boot-test build/disk.qcow2 --ssh-key /path/to/ssh/key
+# Start the vm, then ssh into it
+```
+
+### For distributing the vm (supply-chain attestation)
+
+```bash
+make tools # installs syft, grype, cosign, oras
+make
+
+sudo ./c2vm build ubuntu:24.04 --format qcow2,ova
+
+# a throwaway login for boot-test only
+mkdir -p seed
+printf '#cloud-config\nusers:\n  - name: c2vm\n    groups: [adm, sudo]\n    shell: /bin/bash\n    sudo: "ALL=(ALL) NOPASSWD:ALL"\n    ssh_authorized_keys:\n      - "%s"\n' \
+  "$(cat /path/to/ssh/key.pub)" > seed/user-data
+echo "instance-id: iid-boot-test" > seed/meta-data
+genisoimage -quiet -output seed.iso -V cidata -r -J seed
+
+# key must not be pass-phrase protected
+./c2vm boot-test build/disk.qcow2 --ssh-key /path/to/ssh/key --seed seed.iso
 
 sudo ./c2vm scan build/disk.qcow2
 ./c2vm sbom-diff results/sbom-source.spdx.json results/sbom-disk.spdx.json
 ./c2vm cve-diff  results/cve-source.json      results/cve-disk.json
-```
 
-Publishing, then verifying from anywhere:
-
-```bash
 ./c2vm push build/disk.qcow2 ghcr.io/<user>/c2vm-demo:latest
 ./c2vm sign   ghcr.io/<user>/c2vm-demo:latest
 ./c2vm attest ghcr.io/<user>/c2vm-demo:latest
+
 ./c2vm verify ghcr.io/<user>/c2vm-demo:latest
 ```
 
@@ -95,10 +104,6 @@ Important: The disk is pushed as an OCI artifact with its own media types (nothi
 | [alternatives.md](docs/alternatives.md) | other converters, and when to use them instead |
 | [troubleshooting.md](docs/troubleshooting.md) | when something fails |
 
-## Status and limits
-
-Working and used end to end. Not production-hardened.
-
 ## Layout
 
 ```
@@ -116,7 +121,7 @@ Written by Stefan Bisti as a university project, with [Claude Code](https://clau
 - Architectural planning
 - Implementation and code-review
 - Clarifying some concepts
-- Writing the docs
+- Writing the docs and README
 
 ## License
 

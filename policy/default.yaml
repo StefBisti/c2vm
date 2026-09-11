@@ -6,7 +6,7 @@
 # These name THIS project's signer. Change both to your own before verifying
 # artifacts you published yourself, or `c2vm verify` fails on the signature
 # check for the right reason and a confusing message.
-identity: stefbisti@gmail.com
+identity: 85896225+StefBisti@users.noreply.github.com
 issuer: https://github.com/login/oauth
 
 # Limits are counted over deb packages only. Every-ecosystem counts are
@@ -14,8 +14,9 @@ issuer: https://github.com/login/oauth
 # which reports every CVE ever filed against that version rather than the
 # ones Ubuntu has not backported - an order of magnitude more.
 #
-# Measured on ubuntu:latest (sha256:2260313b…) with grype 0.118.0
-# (db built 2026-09-09): 4 Critical, 87 High. The limits leave headroom, so a
-# single newly published advisory does not fail the build.
-max_critical: 5
-max_high: 200
+# Measured on ubuntu:24.04 (sha256:224a1869…) with c2vm 0.1.0, syft 1.51.1 and
+# grype 0.118.0 (db built 2026-09-09): 5 Critical, 164 High over deb.
+# The limits sit above those, so a single newly published advisory does not
+# fail every verification until someone edits this file.
+max_critical: 8
+max_high: 220

@@ -35,6 +35,7 @@ Writes `disk.raw` plus each requested format, and
 must already exist.
 
 Without `--ssh-key` or `--root-password` the guest boots with no way to log in.
+(Used for distributing the image)
 
 ---
 

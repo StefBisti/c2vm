@@ -18,6 +18,17 @@ You will build a real service appliance from your own Dockerfile, publish it, ve
 Prerequisites: [requirements.md](requirements.md), and a registry you can
 push to. Substitute your own namespace for `ghcr.io/you` throughout.
 
+You also need an SSH keypair — the seeds below install the public half in the
+guest, and `boot-test` logs in with the private half. If you have no
+`~/.ssh/id_ed25519`:
+
+```sh
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+```
+
+Leave the passphrase empty: `boot-test` runs `ssh` non-interactively and cannot
+answer a prompt.
+
 
 
 ## 1. The application
@@ -101,7 +112,6 @@ sudo ./c2vm build ghcr.io/you/statusd:1 \
   --kernel linux-image-amd64 \
   --hostname statusd \
   --format qcow2,ova \
-  --ssh-key ~/.ssh/id_ed25519.pub \
   --out build-statusd
 
 sudo chown -R $USER:$USER build-statusd
@@ -118,9 +128,19 @@ there, including the source image digest it pinned — note that it recorded the
 
 ## 3 · Prove it boots
 
+No `--ssh-key`: an appliance you hand to someone else must not carry your key.
+`boot-test` gets in with a throwaway seed instead, which is the same mechanism
+the recipient will use in step 7.
+
 ```sh
+mkdir -p testseed
+printf '#cloud-config\nusers:\n  - name: c2vm\n    groups: [adm, sudo]\n    shell: /bin/bash\n    sudo: "ALL=(ALL) NOPASSWD:ALL"\n    ssh_authorized_keys:\n      - "%s"\n' \
+  "$(cat ~/.ssh/id_ed25519.pub)" > testseed/user-data
+echo "instance-id: iid-boot-test" > testseed/meta-data
+genisoimage -quiet -output testseed.iso -V cidata -r -J testseed
+
 ./c2vm boot-test build-statusd/disk.qcow2 \
-  --ssh-key ~/.ssh/id_ed25519 --out build-statusd
+  --ssh-key ~/.ssh/id_ed25519 --seed testseed.iso --out build-statusd
 ```
 
 This boots the disk headless, waits for SSH, and asserts the guest matches
@@ -194,8 +214,10 @@ naming the source image digest, the kernel, and every package the conversion
 added — the same list `sbom-diff` published, copied verbatim so the signed
 claim and the public report cannot disagree.
 
-The disk contains **no credentials**. `build` baked in your key for
-`boot-test`, but whoever receives it will supply their own — see step 7.
+The disk contains **no credentials** — that is why step 2 passed no
+`--ssh-key`. The only login that ever existed was the throwaway seed
+`boot-test` mounted, and that seed never touched the disk. Whoever receives it
+supplies their own, the same way — see step 7.
 
 ---
 

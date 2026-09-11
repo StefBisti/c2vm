@@ -74,3 +74,9 @@ ls /usr/share/OVMF/OVMF_CODE*.fd 2>/dev/null || echo "OVMF MISSING"
 - a registry that accepts OCI artifacts with a custom `artifactType` (ghcr does)
 
 `verify` needs neither, it is read-only and anonymous against a public registry.
+
+It does need grype's vulnerability database, because check 6 rescans the signed SBOM locally. Auto-update is deliberately off, so run this once per machine:
+
+```bash
+grype db update    # as your own user, not under sudo
+```

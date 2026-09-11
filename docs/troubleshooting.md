@@ -95,13 +95,15 @@ The disk changed after it was built. Most often: you booted it without `-snapsho
 
 By design, syft would walk the tar and report zero packages. Scan the qcow2 from the same build, or `tar -xf disk.ova disk.vmdk` first.
 
-### `grype has no vulnerability database`
+### `grype has no vulnerability database` / `failed to load vulnerability db: database does not exist`
 
 ```bash
 grype db update    # as your own user, NOT under sudo
 ```
 
 Root has no grype cache. `grype_env()` points at `$SUDO_USER`'s cache when running under `sudo`, so update it as yourself first, then scan with `sudo`.
+
+The second wording is grype's own, and usually comes from `verify` on a fresh machine: check 6 scans the signed SBOM locally, and `grype_env()` sets `GRYPE_DB_AUTO_UPDATE=false` so a verification can never silently pull a different database than the one you meant to measure against. The database has to be there first.
 
 ### `guestmount` fails or hangs
 
